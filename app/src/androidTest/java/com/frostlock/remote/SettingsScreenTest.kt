@@ -35,6 +35,10 @@ class SettingsScreenTest {
         compose.onNodeWithContentDescription("Settings").performClick()
 
         compose.onNodeWithText("APPEARANCE").assertExists()
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("FREEZE CONTROLS"))
+        compose.onNodeWithText("FREEZE CONTROLS").assertExists()
+        compose.onNodeWithText("Until unlock").assertExists()
+        compose.onNodeWithText("Until time").assertExists()
         capture("settings-dark-or-system.png")
 
         compose.onNodeWithContentDescription("Theme selection").performClick()

@@ -28,9 +28,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -50,6 +53,7 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -84,7 +88,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-private enum class Screen { HOME, PAIR, SETTINGS, LOCK_SETTINGS }
+private enum class Screen { HOME, PAIR, SETTINGS, CONTROL, LOCK_SETTINGS }
 private data class PcState(val profile: PcProfile, val snapshot: FreezeSnapshot? = null, val checking: Boolean = true, val error: String? = null)
 
 class MainActivity : ComponentActivity() {
@@ -122,11 +126,9 @@ private fun RemoteApp(
     val haptic = LocalHapticFeedback.current
     var pcs by remember { mutableStateOf<List<PcState>>(emptyList()) }
     var screen by remember { mutableStateOf(Screen.HOME) }
-    var banner by remember { mutableStateOf<String?>(null) }
+    var toast by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
-    var askUnlock by remember { mutableStateOf<PcState?>(null) }
-    var askFreeze by remember { mutableStateOf<PcState?>(null) }
-    var details by remember { mutableStateOf<PcState?>(null) }
+    var selectedPcId by remember { mutableStateOf<String?>(null) }
     var renaming by remember { mutableStateOf<PcState?>(null) }
     var lockSettingsPc by remember { mutableStateOf<PcState?>(null) }
     var lockSettings by remember { mutableStateOf<PcLockSettings?>(null) }
@@ -134,6 +136,13 @@ private fun RemoteApp(
     var lockSettingsSaving by remember { mutableStateOf(false) }
     var lockSettingsError by remember { mutableStateOf<String?>(null) }
     var lockSettingsLoadVersion by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(toast) {
+        if (toast != null) {
+            delay(4000)
+            toast = null
+        }
+    }
 
     var prefs by remember { mutableStateOf(initialPreferences) }
     LaunchedEffect(initialPreferences) { prefs = initialPreferences }
@@ -161,30 +170,38 @@ private fun RemoteApp(
         }
     }
 
-    fun freeze(pc: PcState, minutes: Int, mode: String? = null) {
+    fun freeze(pc: PcState, seconds: Int, mode: String? = null) {
+        if (pc.error != null || pc.checking) {
+            toast = "${pc.profile.name} is offline. Refresh its status before trying again."
+            return
+        }
         busy = true
         scope.launch {
-            runCatching { withContext(Dispatchers.IO) { api.freeze(pc.profile, minutes * 60, mode) } }
+            runCatching { withContext(Dispatchers.IO) { api.freeze(pc.profile, seconds, mode) } }
                 .onSuccess { snapshot ->
                     pcs = pcs.map { if (it.profile.id == pc.profile.id) it.copy(snapshot = snapshot, error = null) else it }
-                    banner = "Freeze confirmed by ${pc.profile.name} for $minutes minutes."
+                    toast = if (snapshot.isActive) "Freeze confirmed by ${pc.profile.name}." else "${pc.profile.name} did not report an active freeze."
                     feedback()
                 }
-                .onFailure { banner = it.message ?: "Freeze was not confirmed. Refresh status before retrying." }
+                .onFailure { toast = it.message ?: "Freeze was not confirmed. Refresh status before retrying." }
             busy = false
         }
     }
 
     fun unlock(pc: PcState) {
+        if (pc.error != null || pc.checking) {
+            toast = "${pc.profile.name} is offline. Its state is unknown."
+            return
+        }
         busy = true
         scope.launch {
             runCatching { withContext(Dispatchers.IO) { api.unlock(pc.profile) } }
                 .onSuccess { snapshot ->
                     pcs = pcs.map { if (it.profile.id == pc.profile.id) it.copy(snapshot = snapshot, error = null) else it }
-                    banner = if (snapshot.isActive) "PC reports the freeze is still active." else "Unlock confirmed by ${pc.profile.name}."
+                    toast = if (snapshot.isActive) "PC reports the freeze is still active." else "Unlock confirmed by ${pc.profile.name}."
                     if (!snapshot.isActive) feedback()
                 }
-                .onFailure { banner = it.message ?: "Unlock was not confirmed. Refresh status before retrying." }
+                .onFailure { toast = it.message ?: "Unlock was not confirmed. Refresh status before retrying." }
             busy = false
         }
     }
@@ -196,8 +213,8 @@ private fun RemoteApp(
                 signer.delete(profile.keyAlias)
             }
             pcs = pcs.filterNot { it.profile.id == profile.id }
-            details = null
-            banner = "Removed ${profile.name} from this phone. Revoke it on the PC too if the phone is lost."
+            if (selectedPcId == profile.id) { selectedPcId = null; screen = Screen.HOME }
+            toast = "Removed ${profile.name}. Revoke this phone on the PC too if the phone is lost."
         }
     }
 
@@ -217,10 +234,11 @@ private fun RemoteApp(
     }
 
     BackHandler(enabled = screen != Screen.HOME) {
-        screen = Screen.HOME
-        banner = null
+        screen = if (screen == Screen.LOCK_SETTINGS) Screen.CONTROL else Screen.HOME
+        toast = null
     }
 
+    Box(Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = screen,
         modifier = Modifier
@@ -239,12 +257,12 @@ private fun RemoteApp(
     ) { targetScreen ->
     when (targetScreen) {
         Screen.PAIR -> PairScreen(
-            onBack = { screen = Screen.HOME; banner = null },
+            onBack = { screen = Screen.HOME; toast = null },
             onInvite = { raw ->
                 scope.launch {
                     try {
                         busy = true
-                        banner = null
+                        toast = null
                         val invite = PairingInvite.parse(raw)
                         val alias = "frostlock-${java.util.UUID.randomUUID()}"
                         val profile = withContext(Dispatchers.IO) {
@@ -253,19 +271,17 @@ private fun RemoteApp(
                         withContext(Dispatchers.IO) { store.save(profile) }
                         pcs = pcs + PcState(profile)
                         screen = Screen.HOME
-                        banner = "Pairing approved by ${profile.name}."
+                        toast = "Pairing approved by ${profile.name}."
                         feedback()
                         refresh(profile)
                     } catch (error: Throwable) {
-                        banner = pairingError(error)
+                        toast = pairingError(error)
                     } finally {
                         busy = false
                     }
                 }
             },
             busy = busy,
-            banner = banner,
-            onDismissBanner = { banner = null },
         )
 
         Screen.SETTINGS -> SettingsScreen(
@@ -273,13 +289,11 @@ private fun RemoteApp(
             versionName = BuildConfig.VERSION_NAME,
             pcs = pcs.map { it.profile },
             onThemeChange = { mode -> applyPreferences { it.copy(theme = mode) } },
-            onDefaultMinutesChange = { minutes -> applyPreferences { it.copy(defaultFreezeMinutes = minutes) } },
-            onConfirmFreezeChange = { enabled -> applyPreferences { it.copy(confirmFreeze = enabled) } },
-            onConfirmUnlockChange = { enabled -> applyPreferences { it.copy(confirmUnlock = enabled) } },
+            onFreezeDurationChange = { seconds, until -> applyPreferences { it.copy(freezeDurationSeconds = seconds, untilMinuteOfDay = until) } },
             onHapticsChange = { enabled -> applyPreferences { it.copy(haptics = enabled) } },
             onRemovePc = ::removePc,
             onReset = { applyPreferences { AppPreferences() } },
-            onBack = { screen = Screen.HOME; banner = null },
+            onBack = { screen = Screen.HOME; toast = null },
         )
 
         Screen.LOCK_SETTINGS -> {
@@ -292,7 +306,7 @@ private fun RemoteApp(
                         Text("Lock settings unavailable", style = MaterialTheme.typography.headlineSmall)
                         Text(lockSettingsError ?: "FrostLock on this PC may need an update to support remote lock settings.")
                         TextButton(onClick = { lockSettingsLoadVersion++ }) { Text("Retry") }
-                        TextButton(onClick = { screen = Screen.HOME }) { Text("Back") }
+                         TextButton(onClick = { screen = Screen.CONTROL }) { Text("Back") }
                     }
                 }
                 else -> PcLockSettingsScreen(
@@ -300,7 +314,7 @@ private fun RemoteApp(
                     settings = lockSettings!!,
                     saving = lockSettingsSaving,
                     error = lockSettingsError,
-                    onBack = { screen = Screen.HOME },
+                    onBack = { screen = Screen.CONTROL },
                     onSave = { draft ->
                         lockSettingsSaving = true
                         lockSettingsError = null
@@ -308,7 +322,7 @@ private fun RemoteApp(
                             runCatching { withContext(Dispatchers.IO) { api.updateLockSettings(pc.profile, draft) } }
                                 .onSuccess {
                                     lockSettings = it
-                                    banner = "Lock settings saved on ${pc.profile.name}."
+                                    toast = "Lock settings saved on ${pc.profile.name}."
                                     feedback()
                                 }
                                 .onFailure { lockSettingsError = it.message ?: "Could not save lock settings." }
@@ -321,139 +335,64 @@ private fun RemoteApp(
 
         Screen.HOME -> HomeScreen(
             pcs = pcs,
-            busy = busy,
-            banner = banner,
-            onDismissBanner = { banner = null },
             onSettings = { screen = Screen.SETTINGS },
-            onLockSettings = { pc -> lockSettings = null; lockSettingsPc = pc; screen = Screen.LOCK_SETTINGS },
             onPair = { screen = Screen.PAIR },
             onRefresh = { pcs.forEach { refresh(it.profile) } },
-            onFreeze = { pc ->
-                if (prefs.confirmFreeze) askFreeze = pc else freeze(pc, prefs.defaultFreezeMinutes)
-            },
-            onUnlock = { pc ->
-                if (prefs.confirmUnlock) askUnlock = pc else unlock(pc)
-            },
-            onDetails = { details = it },
+            onOpen = { pc -> selectedPcId = pc.profile.id; screen = Screen.CONTROL },
+            onDetails = { toast = "${it.profile.endpoint.removePrefix("https://")} · paired ${shortDate(it.profile.pairedAt)}" },
             onRename = { renaming = it },
             onRemove = { pc -> removePc(pc.profile) },
         )
-    }
-    }
 
-    askFreeze?.let { pc ->
-        var duration by remember(pc.profile.id) { mutableIntStateOf(prefs.defaultFreezeMinutes) }
-        var selectedMode by remember(pc.profile.id) { mutableStateOf<String?>(null) }
-        var pcLockSettings by remember(pc.profile.id) { mutableStateOf<PcLockSettings?>(null) }
-        val durationOptions = (listOf(0, 5, 15, 30, 60) + prefs.defaultFreezeMinutes + (duration.takeIf { it > 60 } ?: -1))
-            .filter { it >= 0 }.distinct().sorted()
-            .associate { minutes -> (if (minutes == 0) "Until I unlock" else formatDurationChoice(minutes)) to minutes }
-        LaunchedEffect(pc.profile.id) {
-            runCatching { withContext(Dispatchers.IO) { api.lockSettings(pc.profile) } }
-                .onSuccess {
-                    pcLockSettings = it
-                    duration = if (it.durationSeconds <= 0) 0 else (it.durationSeconds + 59) / 60
-                    selectedMode = it.mode
-                }
+        Screen.CONTROL -> {
+            val pc = pcs.firstOrNull { it.profile.id == selectedPcId }
+            if (pc == null) {
+                ControlErrorScreen("This PC is no longer paired.") { screen = Screen.HOME }
+            } else {
+                PcControlScreen(
+                    pc = pc,
+                    busy = busy,
+                    durationSeconds = effectiveFreezeSeconds(prefs),
+                    durationLabel = freezeDurationLabel(prefs),
+                    onBack = { screen = Screen.HOME },
+                    onToggle = { if (pc.snapshot?.isActive == true) unlock(pc) else freeze(pc, effectiveFreezeSeconds(prefs)) },
+                    onLockSettings = { lockSettings = null; lockSettingsPc = pc; screen = Screen.LOCK_SETTINGS },
+                    onRefresh = { refresh(pc.profile) },
+                    onDetails = { toast = "${pc.profile.endpoint.removePrefix("https://")} · certificate ${pc.profile.certificateSha256.take(16)}…" },
+                )
+            }
         }
-        AlertDialog(
-            onDismissRequest = { askFreeze = null },
-            title = { Text("Freeze ${pc.profile.name}", fontWeight = FontWeight.Bold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Choose how this PC locks and for how long. Hard and USB Key are PC-only modes.", fontSize = 14.sp, lineHeight = 20.sp)
-                    FreezeOptionDropdown(
-                        label = "Lock mode",
-                        value = selectedMode?.let { if (it.equals("Pin", true)) "PIN" else it } ?: "Choose mode",
-                        options = listOf("Gentle", "Strict") + if (pcLockSettings?.hasPin == true) listOf("PIN") else emptyList(),
-                        onSelected = { selectedMode = if (it == "PIN") "Pin" else it },
-                    )
-                    Text(
-                        when {
-                            selectedMode.equals("Pin", true) -> "PIN-protected lock. Release follows the PC's PIN policy."
-                            selectedMode.equals("Strict", true) -> "Blocks keyboard and mouse input according to the PC's Strict settings."
-                            else -> "Shows the lock screen while leaving ordinary mouse input available."
-                        },
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
-                    )
-                    AnimatedVisibility(visible = selectedMode.equals("Pin", true) && pcLockSettings?.mobilePinReleaseAllowed != true) {
-                        Text("Phone release is disabled. You will need to enter the PIN on the PC.", color = MaterialTheme.colorScheme.error, fontSize = 12.sp, lineHeight = 17.sp)
-                    }
-                    FreezeOptionDropdown(
-                        label = "Duration",
-                        value = if (duration == 0) "Until I unlock" else formatDurationChoice(duration),
-                        options = durationOptions.keys.toList(),
-                        onSelected = { value -> duration = durationOptions[value] ?: duration },
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    askFreeze = null
-                    freeze(pc, duration, selectedMode)
-                }) { Text("Freeze") }
-            },
-            dismissButton = { TextButton(onClick = { askFreeze = null }) { Text("Cancel") } },
-        )
+    }
     }
 
-    askUnlock?.let { pc ->
-        AlertDialog(
-            onDismissRequest = { askUnlock = null },
-            title = { Text("Unlock ${pc.profile.name}?") },
-            text = { Text(if (pc.snapshot?.mode.equals("PIN", true)) "This uses the paired phone as an alternate release credential. Continue only if you trust this device." else "This will ask FrostLock on the PC to release the active freeze. The PC decides whether the current mode allows it.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    askUnlock = null
-                    unlock(pc)
-                }) { Text("Unlock", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = { TextButton(onClick = { askUnlock = null }) { Text("Cancel") } },
-        )
-    }
-
-    details?.let { pc ->
-        var testing by remember(pc.profile.id) { mutableStateOf(false) }
-        var testResult by remember(pc.profile.id) { mutableStateOf<String?>(null) }
-        AlertDialog(
-            onDismissRequest = { details = null },
-            title = { Text(pc.profile.name) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    DetailLine("Connection", pc.profile.endpoint.removePrefix("https://"))
-                    DetailLine("Certificate", pc.profile.certificateSha256.chunked(8).joinToString(" "))
-                    DetailLine("Paired", shortDate(pc.profile.pairedAt))
-                    DetailLine("Last seen", pc.profile.lastSeenAt?.let { relativeTime(it) } ?: "Never")
-                    AnimatedVisibility(visible = testResult != null) {
-                        Text(
-                            testResult.orEmpty(),
-                            color = if (testResult?.startsWith("Reachable") == true) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp,
-                        )
-                    }
+    AnimatedVisibility(
+        visible = toast != null,
+        modifier = Modifier.align(Alignment.BottomCenter)
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 14.dp),
+        enter = fadeIn(tween(180)) + androidx.compose.animation.slideInVertically(tween(220)) { it },
+        exit = fadeOut(tween(140)) + androidx.compose.animation.slideOutVertically(tween(160)) { it / 2 },
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.inverseSurface,
+            contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+            shape = RoundedCornerShape(18.dp),
+            shadowElevation = 8.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                Modifier.padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(toast.orEmpty(), Modifier.weight(1f), fontSize = 13.sp, lineHeight = 18.sp)
+                IconButton(onClick = { toast = null }) {
+                    Icon(Icons.Default.Close, contentDescription = "Dismiss message")
                 }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = !testing,
-                    onClick = {
-                        testing = true
-                        testResult = null
-                        scope.launch {
-                            val started = System.nanoTime()
-                            runCatching { withContext(Dispatchers.IO) { api.status(pc.profile) } }
-                                .onSuccess { testResult = "Reachable in ${(System.nanoTime() - started) / 1_000_000} ms" }
-                                .onFailure { testResult = it.message ?: "The PC did not answer." }
-                            testing = false
-                        }
-                    },
-                ) { Text(if (testing) "Testing…" else "Test connection") }
-            },
-            dismissButton = { TextButton(onClick = { details = null }) { Text("Close") } },
-        )
+            }
+        }
+    }
     }
 
     renaming?.let { pc ->
@@ -558,9 +497,9 @@ private fun shortDate(timestamp: Long): String =
 
 @Composable
 private fun HomeScreen(
-    pcs: List<PcState>, busy: Boolean, banner: String?, onDismissBanner: () -> Unit,
-    onSettings: () -> Unit, onLockSettings: (PcState) -> Unit, onPair: () -> Unit, onRefresh: () -> Unit,
-    onFreeze: (PcState) -> Unit, onUnlock: (PcState) -> Unit,
+    pcs: List<PcState>,
+    onSettings: () -> Unit, onPair: () -> Unit, onRefresh: () -> Unit,
+    onOpen: (PcState) -> Unit,
     onDetails: (PcState) -> Unit, onRename: (PcState) -> Unit, onRemove: (PcState) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -596,24 +535,13 @@ private fun HomeScreen(
             }
             item {
                 AnimatedVisibility(
-                    visible = banner != null,
-                    enter = fadeIn(tween(180)) + androidx.compose.animation.slideInVertically(tween(220)) { -it / 3 },
-                    exit = fadeOut(tween(120)) + androidx.compose.animation.slideOutVertically(tween(160)) { -it / 4 },
-                ) {
-                    Surface(color = colors.secondaryContainer, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().clickable(onClick = onDismissBanner)) {
-                        Text(banner.orEmpty(), Modifier.padding(14.dp), color = colors.onSecondaryContainer, fontSize = 13.sp)
-                    }
-                }
-            }
-            item {
-                AnimatedVisibility(
                     visible = pcs.isEmpty(),
                     enter = fadeIn(tween(240)) + androidx.compose.animation.slideInVertically(tween(260)) { it / 10 },
                     exit = fadeOut(tween(120)) + androidx.compose.animation.slideOutVertically(tween(160)) { it / 12 },
                 ) { EmptyState(onPair) }
             }
             items(pcs, key = { it.profile.id }) { pc ->
-                PcCard(pc, busy, { onFreeze(pc) }, { onUnlock(pc) }, { onDetails(pc) }, { onLockSettings(pc) }, { onRename(pc) }, { onRemove(pc) })
+                PcCard(pc, { onOpen(pc) }, { onDetails(pc) }, { onRename(pc) }, { onRemove(pc) })
             }
         }
     }
@@ -647,23 +575,13 @@ private fun EmptyState(onPair: () -> Unit) {
 
 @Composable
 private fun PcCard(
-    pc: PcState, busy: Boolean,
-    onFreeze: () -> Unit, onUnlock: () -> Unit,
-    onDetails: () -> Unit, onLockSettings: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit,
+    pc: PcState,
+    onOpen: () -> Unit,
+    onDetails: () -> Unit, onRename: () -> Unit, onRemove: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     var menu by remember { mutableStateOf(false) }
-    val active = pc.snapshot?.isActive == true
-    var remaining by remember(pc.snapshot) { mutableLongStateOf(pc.snapshot?.remainingSeconds ?: 0L) }
-    LaunchedEffect(pc.snapshot) {
-        remaining = pc.snapshot?.remainingSeconds ?: 0L
-        while (pc.snapshot?.isActive == true && remaining > 0) {
-            delay(1000)
-            remaining = (remaining - 1).coerceAtLeast(0)
-        }
-    }
-
-    Surface(color = colors.surface, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth()) {
+    Surface(color = colors.surface, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Column(Modifier.padding(18.dp).animateContentSize(animationSpec = tween(220))) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -696,7 +614,6 @@ private fun PcCard(
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         DropdownMenuItem(text = { Text("Connection details") }, onClick = { menu = false; onDetails() })
-                        DropdownMenuItem(text = { Text("Lock settings") }, onClick = { menu = false; onLockSettings() })
                         DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                         DropdownMenuItem(text = { Text("Remove from this phone") }, onClick = { menu = false; onRemove() })
                     }
@@ -714,39 +631,14 @@ private fun PcCard(
                     modifier = Modifier.padding(top = 4.dp),
                 )
             } else if (pc.snapshot != null) {
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(
-                        if (active) Icons.Default.Lock else Icons.Default.CheckCircle,
-                        null,
-                        tint = if (active) colors.primary else colors.tertiary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        if (active) "${pc.snapshot.mode ?: "Freeze"} (${if (remaining > 0) formatTime(remaining) else "No timer"})" else "Idle",
-                        color = colors.onSurface,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-                Spacer(Modifier.height(14.dp))
-                if (active) {
-                    OutlinedButton(
-                        onClick = onUnlock,
-                        enabled = pc.snapshot.remoteReleaseAllowed && !busy,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                    ) {
-                        Text(if (pc.snapshot.remoteReleaseAllowed) "Review unlock" else "Unlock disabled by PC policy")
-                    }
-                } else {
-                    Button(
-                        onClick = onFreeze,
-                        enabled = !busy,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = colors.onPrimary),
-                    ) { Text("Freeze this PC") }
-                }
-                if (active && !pc.snapshot.remoteReleaseAllowed) {
-                    Text("This mode does not allow remote release.", color = colors.onSurfaceVariant, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    Icon(if (pc.snapshot.isActive) Icons.Default.Lock else Icons.Default.CheckCircle, null,
+                        tint = if (pc.snapshot.isActive) colors.primary else colors.tertiary, modifier = Modifier.size(18.dp))
+                    Text(if (pc.snapshot.isActive) "${pc.snapshot.mode ?: "Freeze"} active" else "Idle",
+                        color = colors.onSurface, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Default.ArrowForward, "Open ${pc.profile.name}", tint = colors.onSurfaceVariant)
                 }
             } else if (pc.checking) {
                 LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 16.dp), color = colors.primary)
@@ -756,6 +648,155 @@ private fun PcCard(
 }
 
 private fun formatTime(seconds: Long): String = "%d:%02d remaining".format(seconds / 60, seconds % 60)
+
+private fun effectiveFreezeSeconds(preferences: AppPreferences, nowMillis: Long = System.currentTimeMillis()): Int {
+    val untilMinute = preferences.untilMinuteOfDay ?: return preferences.freezeDurationSeconds
+    val now = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(nowMillis), java.time.ZoneId.systemDefault())
+    var target = now.toLocalDate().atStartOfDay().plusMinutes(untilMinute.toLong())
+    if (!target.isAfter(now)) target = target.plusDays(1)
+    return java.time.Duration.between(now, target).seconds.coerceAtLeast(1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+}
+
+private fun freezeDurationLabel(preferences: AppPreferences): String = when {
+    preferences.untilMinuteOfDay != null -> "Until %02d:%02d".format(preferences.untilMinuteOfDay / 60, preferences.untilMinuteOfDay % 60)
+    preferences.freezeDurationSeconds == 0 -> "Until I unlock"
+    preferences.freezeDurationSeconds < 60 -> "${preferences.freezeDurationSeconds} seconds"
+    preferences.freezeDurationSeconds % 3600 == 0 -> "${preferences.freezeDurationSeconds / 3600} hours"
+    preferences.freezeDurationSeconds % 60 == 0 -> "${preferences.freezeDurationSeconds / 60} minutes"
+    else -> formatTime(preferences.freezeDurationSeconds.toLong()).removeSuffix(" remaining")
+}
+
+@Composable
+private fun ControlErrorScreen(message: String, onBack: () -> Unit) {
+    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Text(message, style = MaterialTheme.typography.titleLarge)
+        TextButton(onClick = onBack) { Text("Back to PCs") }
+    }
+}
+
+@Composable
+private fun PcControlScreen(
+    pc: PcState,
+    busy: Boolean,
+    durationSeconds: Int,
+    durationLabel: String,
+    onBack: () -> Unit,
+    onToggle: () -> Unit,
+    onLockSettings: () -> Unit,
+    onRefresh: () -> Unit,
+    onDetails: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val active = pc.snapshot?.isActive == true
+    val allowed = !pc.checking && pc.error == null && pc.snapshot != null &&
+        (active || durationSeconds <= AppPreferences.MAX_FREEZE_SECONDS) &&
+        (!active || pc.snapshot.remoteReleaseAllowed)
+    var remaining by remember(pc.snapshot) { mutableLongStateOf(pc.snapshot?.remainingSeconds ?: 0L) }
+    LaunchedEffect(pc.snapshot) {
+        remaining = pc.snapshot?.remainingSeconds ?: 0L
+        while (pc.snapshot?.isActive == true && remaining > 0) {
+            delay(1000)
+            remaining = (remaining - 1).coerceAtLeast(0)
+        }
+    }
+    Scaffold(containerColor = colors.background) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back to PCs") }
+                Column(Modifier.weight(1f)) {
+                    Text(pc.profile.name, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = colors.onBackground)
+                    Text(pc.profile.endpoint.removePrefix("https://"), fontSize = 12.sp, color = colors.onSurfaceVariant)
+                }
+                IconButton(onClick = onRefresh, enabled = !pc.checking) { Icon(Icons.Default.Refresh, "Refresh status") }
+            }
+            Spacer(Modifier.height(20.dp))
+            Text(
+                when {
+                    pc.checking -> "Checking this PC"
+                    pc.error != null -> "Connection unavailable"
+                    active -> "Freeze active"
+                    else -> "Ready when you are"
+                },
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = when { pc.error != null -> colors.error; active -> colors.primary; else -> colors.tertiary },
+            )
+            Spacer(Modifier.height(24.dp))
+            Surface(
+                onClick = onToggle,
+                enabled = allowed && !busy,
+                shape = CircleShape,
+                color = when {
+                    !allowed || busy -> colors.surfaceVariant
+                    active -> colors.errorContainer
+                    else -> colors.primary
+                },
+                contentColor = when {
+                    !allowed || busy -> colors.onSurfaceVariant
+                    active -> colors.onErrorContainer
+                    else -> colors.onPrimary
+                },
+                border = BorderStroke(1.dp, if (active) colors.error.copy(alpha = 0.4f) else colors.outlineVariant),
+                shadowElevation = if (allowed && !busy) 10.dp else 0.dp,
+                modifier = Modifier.size(224.dp).semantics {
+                    contentDescription = if (active) "Unlock ${pc.profile.name}" else "Freeze ${pc.profile.name}"
+                },
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    if (busy) CircularProgressIndicator(Modifier.size(48.dp), strokeWidth = 3.dp, color = LocalContentColor.current)
+                    else Icon(if (active) Icons.Default.LockOpen else Icons.Default.Lock, null, modifier = Modifier.size(58.dp))
+                    Spacer(Modifier.height(12.dp))
+                    Text(if (active) "UNLOCK" else "FREEZE", fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, fontSize = 16.sp)
+                    if (!active && pc.error == null) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(durationLabel, fontSize = 12.sp)
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+            Text(
+                when {
+                    pc.checking -> "Waiting for the PC to report its current state."
+                    pc.error != null -> "${pc.error}. Offline does not mean unlocked."
+                    active && remaining > 0 -> "${pc.snapshot?.mode ?: "Freeze"} · ${formatTime(remaining)}"
+                    active && !pc.snapshot!!.remoteReleaseAllowed -> "Release is disabled by this PC’s lock policy."
+                    active -> "This PC reports an active freeze."
+                    durationSeconds > AppPreferences.MAX_FREEZE_SECONDS -> "This time is more than 60 minutes away. The PC supports timed freezes up to 60 minutes."
+                    durationSeconds == 0 -> "No timer. Use the circle to freeze; tap again to release when allowed."
+                    else -> "Tap the circle to freeze this PC for $durationLabel."
+                },
+                color = colors.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                modifier = Modifier.padding(horizontal = 20.dp),
+            )
+            if (active && pc.snapshot?.remoteReleaseAllowed == false) {
+                Text("PIN or PC policy does not allow remote release.", color = colors.error, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+            }
+            Spacer(Modifier.weight(1f))
+            Surface(
+                color = colors.surface,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onLockSettings),
+            ) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Settings, null, tint = colors.primary)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Lock options", fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+                        Text("Mode, duration, safety and lock-screen settings", color = colors.onSurfaceVariant, fontSize = 12.sp)
+                    }
+                    Icon(Icons.Default.ArrowForward, null, tint = colors.onSurfaceVariant)
+                }
+            }
+            TextButton(onClick = onDetails, modifier = Modifier.padding(top = 4.dp)) { Text("Connection details") }
+        }
+    }
+}
 
 private fun pairingError(error: Throwable): String = when (error) {
     is java.net.SocketTimeoutException ->
@@ -771,7 +812,6 @@ private fun pairingError(error: Throwable): String = when (error) {
 @androidx.camera.core.ExperimentalGetImage
 private fun PairScreen(
     onBack: () -> Unit, onInvite: (String) -> Unit, busy: Boolean,
-    banner: String?, onDismissBanner: () -> Unit,
 ) {
     var invite by remember { mutableStateOf("") }
     var manual by remember { mutableStateOf(false) }
@@ -805,11 +845,6 @@ private fun PairScreen(
                         Text("Private, short-lived pairing", color = colors.onSurface, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text("The code expires after 3 minutes. Approve the phone on Windows to finish pairing.", color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 4.dp))
                     }
-                }
-            }
-            if (banner != null) {
-                Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp).clickable(onClick = onDismissBanner)) {
-                    Text(banner, Modifier.padding(14.dp), color = MaterialTheme.colorScheme.onSecondaryContainer, fontSize = 13.sp, lineHeight = 19.sp)
                 }
             }
             if (!manual) {

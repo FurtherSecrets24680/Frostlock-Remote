@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -35,15 +34,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -58,7 +56,6 @@ import androidx.compose.ui.unit.sp
 import com.frostlock.remote.data.AppPreferences
 import com.frostlock.remote.data.PcProfile
 import com.frostlock.remote.data.ThemeMode
-import kotlin.math.roundToInt
 
 @Composable
 fun SettingsScreen(
@@ -66,9 +63,7 @@ fun SettingsScreen(
     versionName: String,
     pcs: List<PcProfile>,
     onThemeChange: (ThemeMode) -> Unit,
-    onDefaultMinutesChange: (Int) -> Unit,
-    onConfirmFreezeChange: (Boolean) -> Unit,
-    onConfirmUnlockChange: (Boolean) -> Unit,
+    onFreezeDurationChange: (Int, Int?) -> Unit,
     onHapticsChange: (Boolean) -> Unit,
     onRemovePc: (PcProfile) -> Unit,
     onReset: () -> Unit,
@@ -100,34 +95,18 @@ fun SettingsScreen(
             }
 
             item {
-                SectionLabel("Freezing")
+                SectionLabel("Freeze controls")
                 SettingsCard {
-                    DurationPicker(
-                        minutes = preferences.defaultFreezeMinutes,
-                        onMinutesChange = onDefaultMinutesChange,
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    SettingSwitch(
-                        title = "Ask before freezing",
-                        description = "Show a confirmation with the duration before the PC freezes.",
-                        checked = preferences.confirmFreeze,
-                        onCheckedChange = onConfirmFreezeChange,
-                    )
-                    SettingSwitch(
-                        title = "Ask before unlocking",
-                        description = "Confirm before the phone asks the PC to release a freeze.",
-                        checked = preferences.confirmUnlock,
-                        onCheckedChange = onConfirmUnlockChange,
-                    )
+                    FreezeDurationPicker(preferences.freezeDurationSeconds, preferences.untilMinuteOfDay, onFreezeDurationChange)
                 }
             }
 
             item {
-                SectionLabel("Feedback")
+                SectionLabel("Interaction")
                 SettingsCard {
                     SettingSwitch(
                         title = "Haptic feedback",
-                        description = "A short vibration when the PC confirms an action.",
+                        description = "A short vibration after the PC confirms a freeze or release.",
                         checked = preferences.haptics,
                         onCheckedChange = onHapticsChange,
                     )
@@ -175,15 +154,6 @@ fun SettingsScreen(
                         fontSize = 13.sp,
                         lineHeight = 19.sp,
                     )
-                    Spacer(Modifier.height(14.dp))
-                    Text("Private by design", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = colors.onSurface)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Connections stay on your local network or your own VPN. There is no cloud account, relay, telemetry, or background polling. Pairing uses certificate pinning, and each phone keeps its signing key in Android Keystore. The PC must approve new pairings and remains in control of unlock policy.",
-                        color = colors.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                    )
                     Spacer(Modifier.height(16.dp))
                     TextButton(
                         onClick = { confirmReset = true },
@@ -213,7 +183,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset settings?") },
-            text = { Text("Theme, default duration, confirmations and haptics return to their defaults. Paired PCs are kept.") },
+            text = { Text("Theme, selected duration and haptics return to their defaults. Paired PCs are kept.") },
             confirmButton = {
                 TextButton(onClick = { confirmReset = false; onReset() }) { Text("Reset", color = colors.error) }
             },
@@ -304,37 +274,85 @@ private fun SettingsCard(content: @Composable androidx.compose.foundation.layout
 }
 
 @Composable
-private fun DurationPicker(minutes: Int, onMinutesChange: (Int) -> Unit) {
+private fun FreezeDurationPicker(
+    durationSeconds: Int,
+    untilMinuteOfDay: Int?,
+    onChange: (Int, Int?) -> Unit,
+) {
+    val choices = listOf(300, 900, 1800, 3600, 0, -1, -2)
+    var customMinutes by remember(durationSeconds) { mutableStateOf(((durationSeconds + 59) / 60).coerceIn(5, 60).toString()) }
+    var timeText by remember(untilMinuteOfDay) {
+        mutableStateOf(untilMinuteOfDay?.let { "%02d:%02d".format(it / 60, it % 60) } ?: "18:00")
+    }
+    val selected = when {
+        untilMinuteOfDay != null -> -1
+        durationSeconds == 0 -> 0
+        durationSeconds in listOf(300, 900, 1800, 3600) -> durationSeconds
+        else -> -2
+    }
     val colors = MaterialTheme.colorScheme
-    var draft by remember(minutes) { mutableFloatStateOf(minutes.toFloat()) }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text("Default freeze duration", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = colors.onSurface)
-            Text("Used when you freeze a PC without choosing another duration.", color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp)
-        }
-        Spacer(Modifier.width(12.dp))
-        Surface(color = colors.secondaryContainer, shape = CircleShape) {
-            Text(
-                "${draft.roundToInt()}m",
-                color = colors.onSecondaryContainer,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
+    Text("Freeze duration", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = colors.onSurface)
+    Text("This choice is used by the one-tap PC control.", color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp)
+    Spacer(Modifier.height(12.dp))
+    choices.chunked(3).forEach { rowChoices ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            rowChoices.forEach { choice ->
+                val label = when (choice) {
+                    300 -> "5 min"
+                    900 -> "15 min"
+                    1800 -> "30 min"
+                    3600 -> "1 hour"
+                    0 -> "Until unlock"
+                    -1 -> "Until time"
+                    else -> "Custom"
+                }
+                FilterChip(
+                    selected = selected == choice,
+                    onClick = {
+                        when (choice) {
+                            -1 -> onChange(durationSeconds, parseTime(timeText) ?: 18 * 60)
+                            -2 -> onChange(customMinutes.toIntOrNull()?.coerceIn(5, 60)?.times(60) ?: 300, null)
+                            else -> onChange(choice, null)
+                        }
+                    },
+                    label = { Text(label, maxLines = 1) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            repeat(3 - rowChoices.size) { Spacer(Modifier.weight(1f)) }
         }
     }
-    Slider(
-        value = draft,
-        onValueChange = { draft = it },
-        onValueChangeFinished = { onMinutesChange(draft.roundToInt().coerceIn(AppPreferences.MIN_FREEZE_MINUTES, AppPreferences.MAX_FREEZE_MINUTES)) },
-        valueRange = AppPreferences.MIN_FREEZE_MINUTES.toFloat()..AppPreferences.MAX_FREEZE_MINUTES.toFloat(),
-        steps = (AppPreferences.MAX_FREEZE_MINUTES - AppPreferences.MIN_FREEZE_MINUTES) / AppPreferences.FREEZE_STEP_MINUTES - 1,
-        modifier = Modifier.padding(top = 6.dp),
-    )
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text("5 min", color = colors.onSurfaceVariant, fontSize = 11.sp)
-        Text("60 min", color = colors.onSurfaceVariant, fontSize = 11.sp)
+    if (selected == -1) {
+        OutlinedTextField(
+            value = timeText,
+            onValueChange = { value ->
+                timeText = value.take(5)
+                parseTime(timeText)?.let { onChange(durationSeconds, it) }
+            },
+            label = { Text("Unlock at (24-hour time)") },
+            supportingText = { Text("If that time has passed, it means tomorrow.") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+    } else if (selected == -2) {
+        OutlinedTextField(
+            value = customMinutes,
+            onValueChange = { value ->
+                customMinutes = value.filter(Char::isDigit).take(2)
+                customMinutes.toIntOrNull()?.let { onChange(it.coerceIn(5, 60) * 60, null) }
+            },
+            label = { Text("Custom minutes (5–60)") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
     }
+}
+
+private fun parseTime(value: String): Int? {
+    val match = Regex("^(\\d{1,2}):(\\d{2})$").matchEntire(value) ?: return null
+    val hour = match.groupValues[1].toIntOrNull() ?: return null
+    val minute = match.groupValues[2].toIntOrNull() ?: return null
+    return if (hour in 0..23 && minute in 0..59) hour * 60 + minute else null
 }
 
 @Composable

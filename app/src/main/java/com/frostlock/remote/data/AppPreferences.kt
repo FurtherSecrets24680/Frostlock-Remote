@@ -23,20 +23,20 @@ enum class ThemeMode(val label: String) {
 
 data class AppPreferences(
     val theme: ThemeMode = ThemeMode.SYSTEM,
-    val defaultFreezeMinutes: Int = 15,
-    val confirmFreeze: Boolean = true,
-    val confirmUnlock: Boolean = true,
+    val freezeDurationSeconds: Int = 15 * 60,
+    val untilMinuteOfDay: Int? = null,
     val haptics: Boolean = true,
 ) {
     fun normalized(): AppPreferences = copy(
-        defaultFreezeMinutes = defaultFreezeMinutes.coerceIn(MIN_FREEZE_MINUTES, MAX_FREEZE_MINUTES),
+        freezeDurationSeconds = if (freezeDurationSeconds == 0) 0
+        else freezeDurationSeconds.coerceIn(MIN_FREEZE_SECONDS, MAX_FREEZE_SECONDS),
+        untilMinuteOfDay = untilMinuteOfDay?.takeIf { it in 0 until MINUTES_PER_DAY },
     )
 
     companion object {
-        const val MIN_FREEZE_MINUTES = 5
-        const val MAX_FREEZE_MINUTES = 60
-        const val FREEZE_STEP_MINUTES = 5
-        val FREEZE_DURATIONS = listOf(5, 15, 30, 60)
+        const val MIN_FREEZE_SECONDS = 5 * 60
+        const val MAX_FREEZE_SECONDS = 60 * 60
+        const val MINUTES_PER_DAY = 24 * 60
     }
 }
 
@@ -44,17 +44,18 @@ private val Context.settingsDataStore by preferencesDataStore(name = "app_settin
 
 class PreferencesStore(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme")
-    private val defaultMinutesKey = intPreferencesKey("default_freeze_minutes")
-    private val confirmFreezeKey = booleanPreferencesKey("confirm_freeze")
-    private val confirmUnlockKey = booleanPreferencesKey("confirm_unlock")
+    private val durationSecondsKey = intPreferencesKey("freeze_duration_seconds")
+    private val untilMinuteKey = intPreferencesKey("freeze_until_minute")
+    private val legacyDefaultMinutesKey = intPreferencesKey("default_freeze_minutes")
     private val hapticsKey = booleanPreferencesKey("haptics")
 
     val flow: Flow<AppPreferences> = context.settingsDataStore.data.map { prefs ->
         AppPreferences(
             theme = ThemeMode.from(prefs[themeKey]),
-            defaultFreezeMinutes = prefs[defaultMinutesKey] ?: AppPreferences().defaultFreezeMinutes,
-            confirmFreeze = prefs[confirmFreezeKey] ?: true,
-            confirmUnlock = prefs[confirmUnlockKey] ?: true,
+            freezeDurationSeconds = prefs[durationSecondsKey]
+                ?: prefs[legacyDefaultMinutesKey]?.times(60)
+                ?: AppPreferences().freezeDurationSeconds,
+            untilMinuteOfDay = prefs[untilMinuteKey],
             haptics = prefs[hapticsKey] ?: true,
         ).normalized()
     }
@@ -63,9 +64,8 @@ class PreferencesStore(private val context: Context) {
         val normalized = preferences.normalized()
         context.settingsDataStore.edit { prefs ->
             prefs[themeKey] = normalized.theme.name
-            prefs[defaultMinutesKey] = normalized.defaultFreezeMinutes
-            prefs[confirmFreezeKey] = normalized.confirmFreeze
-            prefs[confirmUnlockKey] = normalized.confirmUnlock
+            prefs[durationSecondsKey] = normalized.freezeDurationSeconds
+            normalized.untilMinuteOfDay?.let { prefs[untilMinuteKey] = it } ?: prefs.remove(untilMinuteKey)
             prefs[hapticsKey] = normalized.haptics
         }
     }

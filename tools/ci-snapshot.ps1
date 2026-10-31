@@ -5,7 +5,8 @@
 # worktree and stash list are left exactly as they were.
 #
 #   .\tools\ci-snapshot.ps1                 # debug build of current WIP
-#   .\tools\ci-snapshot.ps1 -Release        # signed release APKs + AABs of current WIP
+#   .\tools\ci-snapshot.ps1 -Release        # release APK + AAB of current WIP
+#                                              (APK signing depends on the app's Gradle signing config)
 #   .\tools\ci-snapshot.ps1 -KeepBranch     # leave the snapshot branch on the remote
 #
 # WARNING: the snapshot branch is pushed to origin, so this WIP becomes visible to anyone
@@ -83,11 +84,18 @@ $conclusion = gh run view $run.databaseId --json conclusion -q '.conclusion'
 
 Remove-Item -Recurse -Force $Target -ErrorAction SilentlyContinue
 $artifacts = gh api "repos/{owner}/{repo}/actions/runs/$($run.databaseId)/artifacts" -q '.artifacts[].name'
-foreach ($name in ($artifacts -split "`n" | Where-Object { $_ })) {
-    gh run download $run.databaseId -n $name -D $Target
-}
-Get-ChildItem -Recurse $Target -Include *.apk, *.aab | ForEach-Object {
-    "{0,8:N2} MB  {1}" -f ($_.Length / 1MB), $_.FullName.Substring($root.Length + 1)
+if ($conclusion -eq 'success') {
+    $artifactNames = @($artifacts -split "`n" | Where-Object { $_ })
+    if ($artifactNames.Count -eq 0) {
+        throw 'The workflow succeeded but did not upload any artifacts.'
+    }
+    New-Item -ItemType Directory -Path $Target -Force | Out-Null
+    foreach ($name in $artifactNames) {
+        gh run download $run.databaseId -n $name -D $Target
+    }
+    Get-ChildItem -Recurse $Target -Include *.apk, *.aab | ForEach-Object {
+        "{0,8:N2} MB  {1}" -f ($_.Length / 1MB), $_.FullName.Substring($root.Length + 1)
+    }
 }
 
 if (-not $KeepBranch) {

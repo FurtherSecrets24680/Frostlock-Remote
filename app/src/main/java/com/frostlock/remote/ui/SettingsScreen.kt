@@ -27,14 +27,12 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -63,7 +61,6 @@ fun SettingsScreen(
     versionName: String,
     pcs: List<PcProfile>,
     onThemeChange: (ThemeMode) -> Unit,
-    onFreezeDurationChange: (Int, Int?) -> Unit,
     onHapticsChange: (Boolean) -> Unit,
     onRemovePc: (PcProfile) -> Unit,
     onReset: () -> Unit,
@@ -91,13 +88,6 @@ fun SettingsScreen(
                     Text("Follow the device setting or choose a theme.", color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp)
                     Spacer(Modifier.height(8.dp))
                     ThemeDropdown(selected = preferences.theme, onSelect = onThemeChange)
-                }
-            }
-
-            item {
-                SectionLabel("Freeze controls")
-                SettingsCard {
-                    FreezeDurationPicker(preferences.freezeDurationSeconds, preferences.untilMinuteOfDay, onFreezeDurationChange)
                 }
             }
 
@@ -183,7 +173,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset settings?") },
-            text = { Text("Theme, selected duration and haptics return to their defaults. Paired PCs are kept.") },
+            text = { Text("Theme and haptics return to their defaults. Paired PCs are kept.") },
             confirmButton = {
                 TextButton(onClick = { confirmReset = false; onReset() }) { Text("Reset", color = colors.error) }
             },
@@ -271,88 +261,6 @@ private fun SettingsCard(content: @Composable androidx.compose.foundation.layout
             content = content,
         )
     }
-}
-
-@Composable
-private fun FreezeDurationPicker(
-    durationSeconds: Int,
-    untilMinuteOfDay: Int?,
-    onChange: (Int, Int?) -> Unit,
-) {
-    val choices = listOf(300, 900, 1800, 3600, 0, -1, -2)
-    var customMinutes by remember(durationSeconds) { mutableStateOf(((durationSeconds + 59) / 60).coerceIn(5, 60).toString()) }
-    var timeText by remember(untilMinuteOfDay) {
-        mutableStateOf(untilMinuteOfDay?.let { "%02d:%02d".format(it / 60, it % 60) } ?: "18:00")
-    }
-    val selected = when {
-        untilMinuteOfDay != null -> -1
-        durationSeconds == 0 -> 0
-        durationSeconds in listOf(300, 900, 1800, 3600) -> durationSeconds
-        else -> -2
-    }
-    val colors = MaterialTheme.colorScheme
-    Text("Freeze duration", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = colors.onSurface)
-    Text("This choice is used by the one-tap PC control.", color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp)
-    Spacer(Modifier.height(12.dp))
-    choices.chunked(3).forEach { rowChoices ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            rowChoices.forEach { choice ->
-                val label = when (choice) {
-                    300 -> "5 min"
-                    900 -> "15 min"
-                    1800 -> "30 min"
-                    3600 -> "1 hour"
-                    0 -> "Until unlock"
-                    -1 -> "Until time"
-                    else -> "Custom"
-                }
-                FilterChip(
-                    selected = selected == choice,
-                    onClick = {
-                        when (choice) {
-                            -1 -> onChange(durationSeconds, parseTime(timeText) ?: 18 * 60)
-                            -2 -> onChange(customMinutes.toIntOrNull()?.coerceIn(5, 60)?.times(60) ?: 300, null)
-                            else -> onChange(choice, null)
-                        }
-                    },
-                    label = { Text(label, maxLines = 1) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            repeat(3 - rowChoices.size) { Spacer(Modifier.weight(1f)) }
-        }
-    }
-    if (selected == -1) {
-        OutlinedTextField(
-            value = timeText,
-            onValueChange = { value ->
-                timeText = value.take(5)
-                parseTime(timeText)?.let { onChange(durationSeconds, it) }
-            },
-            label = { Text("Unlock at (24-hour time)") },
-            supportingText = { Text("If that time has passed, it means tomorrow.") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        )
-    } else if (selected == -2) {
-        OutlinedTextField(
-            value = customMinutes,
-            onValueChange = { value ->
-                customMinutes = value.filter(Char::isDigit).take(2)
-                customMinutes.toIntOrNull()?.let { onChange(it.coerceIn(5, 60) * 60, null) }
-            },
-            label = { Text("Custom minutes (5–60)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        )
-    }
-}
-
-private fun parseTime(value: String): Int? {
-    val match = Regex("^(\\d{1,2}):(\\d{2})$").matchEntire(value) ?: return null
-    val hour = match.groupValues[1].toIntOrNull() ?: return null
-    val minute = match.groupValues[2].toIntOrNull() ?: return null
-    return if (hour in 0..23 && minute in 0..59) hour * 60 + minute else null
 }
 
 @Composable

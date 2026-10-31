@@ -9,15 +9,6 @@ import org.junit.Test
 
 class AppPreferencesTest {
     @Test
-    fun durationKeepsPresetsUntilUnlockAndClampsCustomValues() {
-        assertEquals(300, AppPreferences(freezeDurationSeconds = 30).normalized().freezeDurationSeconds)
-        assertEquals(300, AppPreferences(freezeDurationSeconds = 120).normalized().freezeDurationSeconds)
-        assertEquals(60 * 60, AppPreferences(freezeDurationSeconds = 500_000).normalized().freezeDurationSeconds)
-        assertEquals(0, AppPreferences(freezeDurationSeconds = 0).normalized().freezeDurationSeconds)
-        assertEquals(300, AppPreferences(freezeDurationSeconds = 60).normalized().freezeDurationSeconds)
-    }
-
-    @Test
     fun themeModeParsesKnownValuesAndFallsBack() {
         assertEquals(ThemeMode.SYSTEM, ThemeMode.from(null))
         assertEquals(ThemeMode.DARK, ThemeMode.from("dark"))
@@ -30,8 +21,6 @@ class AppPreferencesTest {
     fun defaultsAreSafe() {
         val defaults = AppPreferences()
         assertEquals(ThemeMode.SYSTEM, defaults.theme)
-        assertEquals(15 * 60, defaults.freezeDurationSeconds)
-        assertEquals(null, defaults.untilMinuteOfDay)
         assertEquals(true, defaults.haptics)
     }
 

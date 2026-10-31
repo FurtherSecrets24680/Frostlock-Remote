@@ -3,6 +3,7 @@ package com.frostlock.remote
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasText
@@ -35,10 +36,8 @@ class SettingsScreenTest {
         compose.onNodeWithContentDescription("Settings").performClick()
 
         compose.onNodeWithText("APPEARANCE").assertExists()
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("FREEZE CONTROLS"))
-        compose.onNodeWithText("FREEZE CONTROLS").assertExists()
-        compose.onNodeWithText("Until unlock").assertExists()
-        compose.onNodeWithText("Until time").assertExists()
+        compose.onNodeWithText("FREEZE CONTROLS").assertDoesNotExist()
+        compose.onNodeWithText("Until unlock").assertDoesNotExist()
         capture("settings-dark-or-system.png")
 
         compose.onNodeWithContentDescription("Theme selection").performClick()

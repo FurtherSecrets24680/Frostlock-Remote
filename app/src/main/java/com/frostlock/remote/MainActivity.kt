@@ -149,7 +149,7 @@ private fun RemoteApp(
     LaunchedEffect(initialPreferences) { prefs = initialPreferences }
 
     fun applyPreferences(transform: (AppPreferences) -> AppPreferences) {
-        val next = transform(prefs).normalized()
+        val next = transform(prefs)
         prefs = next
         scope.launch { withContext(Dispatchers.IO) { preferences.save(next) } }
     }
@@ -290,7 +290,6 @@ private fun RemoteApp(
             versionName = BuildConfig.VERSION_NAME,
             pcs = pcs.map { it.profile },
             onThemeChange = { mode -> applyPreferences { it.copy(theme = mode) } },
-            onFreezeDurationChange = { seconds, until -> applyPreferences { it.copy(freezeDurationSeconds = seconds, untilMinuteOfDay = until) } },
             onHapticsChange = { enabled -> applyPreferences { it.copy(haptics = enabled) } },
             onRemovePc = ::removePc,
             onReset = { applyPreferences { AppPreferences() } },
@@ -339,7 +338,13 @@ private fun RemoteApp(
             onSettings = { screen = Screen.SETTINGS },
             onPair = { screen = Screen.PAIR },
             onRefresh = { pcs.forEach { refresh(it.profile) } },
-            onOpen = { pc -> selectedPcId = pc.profile.id; screen = Screen.CONTROL },
+            onOpen = { pc ->
+                selectedPcId = pc.profile.id
+                lockSettings = null
+                lockSettingsPc = pc
+                lockSettingsLoadVersion++
+                screen = Screen.CONTROL
+            },
             onDetails = { toast = "${it.profile.endpoint.removePrefix("https://")} · paired ${shortDate(it.profile.pairedAt)}" },
             onRename = { renaming = it },
             onRemove = { pc -> removePc(pc.profile) },
@@ -350,14 +355,18 @@ private fun RemoteApp(
             if (pc == null) {
                 ControlErrorScreen("This PC is no longer paired.") { screen = Screen.HOME }
             } else {
+                val controlOptions = lockSettings.takeIf { lockSettingsPc?.profile?.id == pc.profile.id }
                 PcControlScreen(
                     pc = pc,
                     busy = busy,
-                    durationSeconds = effectiveFreezeSeconds(prefs),
-                    durationLabel = freezeDurationLabel(prefs),
+                    lockOptions = controlOptions,
+                    lockOptionsLoading = lockSettingsLoading,
                     onBack = { screen = Screen.HOME },
-                    onToggle = { if (pc.snapshot?.isActive == true) unlock(pc) else freeze(pc, effectiveFreezeSeconds(prefs)) },
-                    onLockSettings = { lockSettings = null; lockSettingsPc = pc; screen = Screen.LOCK_SETTINGS },
+                    onToggle = {
+                        if (pc.snapshot?.isActive == true) unlock(pc)
+                        else controlOptions?.let { freeze(pc, it.durationSeconds, it.mode) }
+                    },
+                    onLockSettings = { screen = Screen.LOCK_SETTINGS },
                     onRefresh = { refresh(pc.profile) },
                     onDetails = { toast = "${pc.profile.endpoint.removePrefix("https://")} · certificate ${pc.profile.certificateSha256.take(16)}…" },
                 )
@@ -650,21 +659,11 @@ private fun PcCard(
 
 private fun formatTime(seconds: Long): String = "%d:%02d remaining".format(seconds / 60, seconds % 60)
 
-private fun effectiveFreezeSeconds(preferences: AppPreferences, nowMillis: Long = System.currentTimeMillis()): Int {
-    val untilMinute = preferences.untilMinuteOfDay ?: return preferences.freezeDurationSeconds
-    val now = java.time.LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(nowMillis), java.time.ZoneId.systemDefault())
-    var target = now.toLocalDate().atStartOfDay().plusMinutes(untilMinute.toLong())
-    if (!target.isAfter(now)) target = target.plusDays(1)
-    return java.time.Duration.between(now, target).seconds.coerceAtLeast(1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-}
-
-private fun freezeDurationLabel(preferences: AppPreferences): String = when {
-    preferences.untilMinuteOfDay != null -> "Until %02d:%02d".format(preferences.untilMinuteOfDay / 60, preferences.untilMinuteOfDay % 60)
-    preferences.freezeDurationSeconds == 0 -> "Until I unlock"
-    preferences.freezeDurationSeconds < 60 -> "${preferences.freezeDurationSeconds} seconds"
-    preferences.freezeDurationSeconds % 3600 == 0 -> "${preferences.freezeDurationSeconds / 3600} hours"
-    preferences.freezeDurationSeconds % 60 == 0 -> "${preferences.freezeDurationSeconds / 60} minutes"
-    else -> formatTime(preferences.freezeDurationSeconds.toLong()).removeSuffix(" remaining")
+private fun freezeDurationLabel(seconds: Int): String = when {
+    seconds <= 0 -> "Until I unlock"
+    seconds % 3600 == 0 -> "${seconds / 3600} hours"
+    seconds % 60 == 0 -> "${seconds / 60} minutes"
+    else -> "$seconds seconds"
 }
 
 @Composable
@@ -679,8 +678,8 @@ private fun ControlErrorScreen(message: String, onBack: () -> Unit) {
 private fun PcControlScreen(
     pc: PcState,
     busy: Boolean,
-    durationSeconds: Int,
-    durationLabel: String,
+    lockOptions: PcLockSettings?,
+    lockOptionsLoading: Boolean,
     onBack: () -> Unit,
     onToggle: () -> Unit,
     onLockSettings: () -> Unit,
@@ -689,8 +688,10 @@ private fun PcControlScreen(
 ) {
     val colors = MaterialTheme.colorScheme
     val active = pc.snapshot?.isActive == true
+    val durationSeconds = lockOptions?.durationSeconds
+    val durationLabel = durationSeconds?.let(::freezeDurationLabel).orEmpty()
     val allowed = !pc.checking && pc.error == null && pc.snapshot != null &&
-        (active || durationSeconds <= AppPreferences.MAX_FREEZE_SECONDS) &&
+        (active || lockOptions != null) &&
         (!active || pc.snapshot.remoteReleaseAllowed)
     var remaining by remember(pc.snapshot) { mutableLongStateOf(pc.snapshot?.remainingSeconds ?: 0L) }
     LaunchedEffect(pc.snapshot) {
@@ -751,9 +752,9 @@ private fun PcControlScreen(
                     else Icon(if (active) Icons.Default.LockOpen else Icons.Default.Lock, null, modifier = Modifier.size(58.dp))
                     Spacer(Modifier.height(12.dp))
                     Text(if (active) "UNLOCK" else "FREEZE", fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, fontSize = 16.sp)
-                    if (!active && pc.error == null) {
+                    if (!active && lockOptions != null) {
                         Spacer(Modifier.height(4.dp))
-                        Text(durationLabel, fontSize = 12.sp)
+                        Text("${lockOptions.mode} · $durationLabel", fontSize = 12.sp)
                     }
                 }
             }
@@ -762,12 +763,13 @@ private fun PcControlScreen(
                 when {
                     pc.checking -> "Waiting for the PC to report its current state."
                     pc.error != null -> "${pc.error}. Offline does not mean unlocked."
+                    !active && lockOptionsLoading -> "Loading this PC’s saved lock options."
+                    !active && lockOptions == null -> "Could not load this PC’s lock options. Open Lock options to retry before freezing."
                     active && remaining > 0 -> "${pc.snapshot?.mode ?: "Freeze"} · ${formatTime(remaining)}"
                     active && !pc.snapshot!!.remoteReleaseAllowed -> "Release is disabled by this PC’s lock policy."
                     active -> "This PC reports an active freeze."
-                    durationSeconds > AppPreferences.MAX_FREEZE_SECONDS -> "This time is more than 60 minutes away. The PC supports timed freezes up to 60 minutes."
-                    durationSeconds == 0 -> "No timer. Use the circle to freeze; tap again to release when allowed."
-                    else -> "Tap the circle to freeze this PC for $durationLabel."
+                    durationSeconds == 0 -> "No timer. The PC’s lock options set this freeze to continue until you unlock."
+                    else -> "Tap the circle to freeze this PC in ${lockOptions?.mode} mode for $durationLabel."
                 },
                 color = colors.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,

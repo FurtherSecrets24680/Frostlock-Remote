@@ -63,7 +63,9 @@ The debug APK is written to `app\build\outputs\apk\debug\app-debug.apk`.
 
 Open **Actions → Android CI → Run workflow**. Leave **Build the release APK and app bundle** unchecked for a debug APK, or select it for release artifacts. The workflow runs the matching unit tests before uploading the build artifacts.
 
-The release workflow currently has no release signing key configured. It uploads an unsigned APK (`app-release-unsigned.apk`) and an Android App Bundle (`app-release.aab`). Sign the APK with your own key before distributing it. Do not publish a debug-key-signed APK as a production release.
+The release workflow signs the APK and Android App Bundle with the FrostLock Remote release key stored in GitHub Actions secrets. The workflow decodes the keystore into the runner’s temporary directory; the keystore and passwords do not belong in Git. Keep a secure backup of the release keystore. Android accepts future updates only when they use the same signing key.
+
+The release signing inputs are `FROSTLOCK_RELEASE_KEYSTORE_BASE64`, `FROSTLOCK_RELEASE_STORE_PASSWORD`, `FROSTLOCK_RELEASE_KEY_ALIAS`, and `FROSTLOCK_RELEASE_KEY_PASSWORD`. The workflow stops if any input is missing.
 
 To build the current working tree, including uncommitted changes, use:
 

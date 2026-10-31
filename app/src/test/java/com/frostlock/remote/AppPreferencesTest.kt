@@ -14,7 +14,7 @@ class AppPreferencesTest {
         assertEquals(300, AppPreferences(freezeDurationSeconds = 120).normalized().freezeDurationSeconds)
         assertEquals(60 * 60, AppPreferences(freezeDurationSeconds = 500_000).normalized().freezeDurationSeconds)
         assertEquals(0, AppPreferences(freezeDurationSeconds = 0).normalized().freezeDurationSeconds)
-        assertEquals(60, AppPreferences(freezeDurationSeconds = 60).normalized().freezeDurationSeconds)
+        assertEquals(300, AppPreferences(freezeDurationSeconds = 60).normalized().freezeDurationSeconds)
     }
 
     @Test

@@ -66,6 +66,9 @@ dependencies {
     androidTestImplementation(composeBom)
 
     implementation("androidx.activity:activity-compose:1.11.0")
+    // Explicit, because the unlock confirmation screen uses an AppCompat theme so the
+    // biometric fingerprint dialog can build its androidx.appcompat AlertDialog.
+    implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.9.1")
     implementation("androidx.compose.ui:ui")

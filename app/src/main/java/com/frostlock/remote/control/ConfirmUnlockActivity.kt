@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
@@ -28,7 +29,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.frostlock.remote.data.PcProfile
@@ -45,10 +45,13 @@ import kotlinx.coroutines.withContext
  * widget, the Quick Settings tile and the freeze notification all ask the same question.
  *
  * It is translucent on purpose: the system biometric prompt is the visible part, and
- * this activity only exists to be a [FragmentActivity] that can host it. The unlock
+ * this activity only exists to be a host that can show it. It is an
+ * [AppCompatActivity] because on API 26-28 the biometric library renders its fallback
+ * fingerprint dialog with `androidx.appcompat.app.AlertDialog`, which throws
+ * `IllegalStateException` unless the host theme is an AppCompat theme. The unlock
  * itself runs here, and the result is reported back so the caller can refresh.
  */
-class ConfirmUnlockActivity : FragmentActivity() {
+class ConfirmUnlockActivity : AppCompatActivity() {
 
     private var profile: PcProfile? = null
     private var started = false
@@ -189,7 +192,10 @@ class ConfirmUnlockActivity : FragmentActivity() {
         )
 
         runCatching { prompt.authenticate(builder.build()) }
-            .onFailure { finishWith(false) }
+            .onFailure { error ->
+                RemoteControl.toast(this@ConfirmUnlockActivity, RemoteControl.shortError(error))
+                finishWith(false)
+            }
     }
 
     private fun performUnlock(pc: PcProfile) {

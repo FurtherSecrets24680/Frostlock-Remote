@@ -11,6 +11,7 @@ import android.widget.RemoteViews
 import com.frostlock.remote.R
 import com.frostlock.remote.control.ConfirmUnlockActivity
 import com.frostlock.remote.control.RemoteControl
+import kotlinx.coroutines.launch
 
 /**
  * Home-screen widget mirroring the big freeze button in the app: one circle that

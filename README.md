@@ -8,6 +8,7 @@ FrostLock Remote lets you check and control a paired Windows PC from your Androi
 
 - Shows paired PCs and whether each one is reachable, idle, or frozen.
 - Opens a dedicated control page for each PC. The large Freeze/Unlock control acts on that PC.
+- Offers a home-screen widget with the same Freeze/Unlock circle for one chosen PC.
 - Uses the mode and duration saved in that PC’s **Lock options**. Change those options from the PC page; the app loads them from Windows before enabling a new freeze.
 - Applies the PC’s safety limit and release policy. An offline PC has an unknown state, not an unlocked state.
 - Pairs by scanning a QR code or entering its invite text. Camera access is optional; manual entry does not need it.
@@ -31,13 +32,21 @@ Use **Lock options** on that page to change the mode, duration, arm delay, safet
 
 Tap **Refresh** to check status again. If a PC is offline, the app disables actions that depend on knowing its state.
 
+## Home screen widget
+
+Long-press an empty spot on the home screen, choose **Widgets**, and add **FrostLock PC control**. The launcher asks which paired PC the widget should control; one widget controls one PC, and adding a second widget lets you pick a different one.
+
+The circle mirrors the app: a lock icon to freeze, an open lock and a red circle while a freeze is active, and a spinner while a request is in flight. The status line shows the mode and the time left as of the last check. Tap the circle to act; if the PC was unreachable, the tap retries the connection instead.
+
+The widget redraws whenever the app checks a PC, and Android also refreshes it about every 30 minutes and after a reboot. It does not tick a live countdown between refreshes.
+
 ## Requirements
 
 - Android 8.0 (API 26) or newer.
 - FrostLock for Windows with Mobile Unlock enabled.
 - A private Wi-Fi or VPN connection between the phone and PC. The app does not use a cloud account or relay.
 
-The app checks status when it opens and when you refresh. It does not run a background listener or continuously poll PCs.
+The app checks status when it opens, when you refresh, and when the widget is tapped. It does not run a background listener on the phone; the widget's only scheduled refresh is the system's periodic update, about every 30 minutes.
 
 ## Security and stored data
 
@@ -45,7 +54,7 @@ The app checks status when it opens and when you refresh. It does not run a back
 - Each pairing gets an ECDSA signing key in Android Keystore. The private key is non-exportable; the app signs authenticated requests with it.
 - The app stores paired PC details locally and disables Android backup for app data. Removing a PC deletes its local key and pairing record. To remove a lost or retired phone completely, also revoke it in FrostLock on Windows.
 - The Windows PC approves each pairing and decides which lock modes and remote releases it permits.
-- The app has no telemetry, cloud service, relay, or background polling.
+- The app has no telemetry, cloud service, or relay. Every request goes directly to a paired PC.
 
 ## Build and test
 

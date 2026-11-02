@@ -74,6 +74,7 @@ import com.frostlock.remote.ui.FrostTheme
 import com.frostlock.remote.ui.PcLockSettingsScreen
 import com.frostlock.remote.ui.SettingsScreen
 import com.frostlock.remote.ui.relativeTime
+import com.frostlock.remote.widget.FrostLockWidget
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -125,6 +126,7 @@ private fun RemoteApp(
 ) {
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val context = LocalContext.current
     var pcs by remember { mutableStateOf<List<PcState>>(emptyList()) }
     var screen by remember { mutableStateOf(Screen.HOME) }
     var toast by remember { mutableStateOf<String?>(null) }
@@ -168,6 +170,7 @@ private fun RemoteApp(
                     pcs = pcs.map { if (it.profile.id == profile.id) PcState(updated, snapshot, false) else it }
                 }
                 .onFailure { err -> pcs = pcs.map { if (it.profile.id == profile.id) it.copy(checking = false, error = err.message ?: "PC unreachable") else it } }
+            FrostLockWidget.refreshAll(context)
         }
     }
 
@@ -186,6 +189,7 @@ private fun RemoteApp(
                 }
                 .onFailure { toast = it.message ?: "Freeze was not confirmed. Refresh status before retrying." }
             busy = false
+            FrostLockWidget.refreshAll(context)
         }
     }
 
@@ -204,6 +208,7 @@ private fun RemoteApp(
                 }
                 .onFailure { toast = it.message ?: "Unlock was not confirmed. Refresh status before retrying." }
             busy = false
+            FrostLockWidget.refreshAll(context)
         }
     }
 
@@ -216,6 +221,7 @@ private fun RemoteApp(
             pcs = pcs.filterNot { it.profile.id == profile.id }
             if (selectedPcId == profile.id) { selectedPcId = null; screen = Screen.HOME }
             toast = "Removed ${profile.name}. Revoke this phone on the PC too if the phone is lost."
+            FrostLockWidget.refreshAll(context)
         }
     }
 

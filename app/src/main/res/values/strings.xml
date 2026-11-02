@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_label">FrostLock PC control</string>
+    <string name="widget_description">Freeze or unlock your PC from the home screen.</string>
+    <string name="widget_action_description">Freeze or unlock this PC</string>
+    <string name="widget_action_freeze">FREEZE</string>
+    <string name="widget_action_unlock">UNLOCK</string>
+    <string name="widget_status_ready">Tap to freeze</string>
+</resources>

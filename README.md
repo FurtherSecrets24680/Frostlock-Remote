@@ -9,6 +9,9 @@ FrostLock Remote lets you check and control a paired Windows PC from your Androi
 - Shows paired PCs and whether each one is reachable, idle, or frozen.
 - Opens a dedicated control page for each PC. The large Freeze/Unlock control acts on that PC.
 - Offers a home-screen widget with the same Freeze/Unlock circle for one chosen PC.
+- Adds a Quick Settings tile that freezes or unlocks the PC you used last.
+- Keeps an ongoing notification while a freeze is active, with an inline **Unlock** action.
+- Confirms every unlock on the phone with a fingerprint or the device PIN before it is sent.
 - Uses the mode and duration saved in that PC’s **Lock options**. Change those options from the PC page; the app loads them from Windows before enabling a new freeze.
 - Applies the PC’s safety limit and release policy. An offline PC has an unknown state, not an unlocked state.
 - Pairs by scanning a QR code or entering its invite text. Camera access is optional; manual entry does not need it.
@@ -40,13 +43,31 @@ The circle mirrors the app: a lock icon to freeze, an open lock and a red circle
 
 The widget redraws whenever the app checks a PC, and Android also refreshes it about every 30 minutes and after a reboot. It does not tick a live countdown between refreshes.
 
+## Quick Settings tile
+
+Open the notification shade, expand the tiles, and add **FrostLock PC**. The tile acts on the PC you opened most recently in the app, or the newest paired PC if you have not opened one yet.
+
+Tapping the tile checks the PC's current state, then freezes it or unlocks it — the same decision the app and widget make, so a tile tap never guesses. While the check runs the tile is shown as unavailable.
+
+## Freeze notification
+
+While a freeze is active, FrostLock keeps one ongoing notification with the mode, a live countdown drawn by the system, and an **Unlock** action. The action opens the same confirmation screen as everything else, so it cannot bypass the phone lock. The notification is posted or cleared the next time the app, widget, or tile talks to the PC, so a freeze that expires on its own may linger until the next check. Android 13 and newer ask for notification permission on first launch.
+
+## Confirm before unlocking
+
+Starting a freeze never needs confirmation. Releasing one does, because a phone that is unlocked and unattended should not be able to undo the PC's protection.
+
+Every unlock — from the app, the widget, the tile, or the notification — opens one shared confirmation screen. If the phone has a fingerprint or face enrolled, it asks for that with the device PIN, pattern, or password as a fallback. If the phone has a screen lock but no biometric, it asks for the device credential. If the phone has no screen lock at all, there is nothing to prove, so the unlock is sent directly.
+
+FrostLock never stores or sees your biometrics or PIN; Android's system prompt checks them and only tells the app "confirmed" or "not confirmed".
+
 ## Requirements
 
 - Android 8.0 (API 26) or newer.
 - FrostLock for Windows with Mobile Unlock enabled.
 - A private Wi-Fi or VPN connection between the phone and PC. The app does not use a cloud account or relay.
 
-The app checks status when it opens, when you refresh, and when the widget is tapped. It does not run a background listener on the phone; the widget's only scheduled refresh is the system's periodic update, about every 30 minutes.
+The app checks status when it opens, when you refresh, when the widget is tapped, and when the tile is opened or tapped. It does not run a background listener on the phone; the widget's only scheduled refresh is the system's periodic update, about every 30 minutes.
 
 ## Security and stored data
 
@@ -86,4 +107,4 @@ This helper pushes a temporary snapshot branch to GitHub so Actions can build it
 
 ## Project details
 
-The Android client uses Kotlin, Jetpack Compose, DataStore, OkHttp, CameraX, and ML Kit barcode scanning. Pairing and request signing must remain compatible with the Windows implementation in the [FrostLock repository](https://github.com/FurtherSecrets24680/FrostLock).
+The Android client uses Kotlin, Jetpack Compose, DataStore, OkHttp, CameraX, ML Kit barcode scanning, and AndroidX Biometric. Pairing and request signing must remain compatible with the Windows implementation in the [FrostLock repository](https://github.com/FurtherSecrets24680/FrostLock).

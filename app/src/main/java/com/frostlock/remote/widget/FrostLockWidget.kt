@@ -6,31 +6,19 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.widget.RemoteViews
-import android.widget.Toast
 import com.frostlock.remote.R
-import com.frostlock.remote.data.DeviceSigner
-import com.frostlock.remote.data.FrostLockApi
-import com.frostlock.remote.data.ProfileStore
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.net.ConnectException
-import java.net.NoRouteToHostException
-import java.net.SocketTimeoutException
-import java.net.UnknownHostException
+import com.frostlock.remote.control.ConfirmUnlockActivity
+import com.frostlock.remote.control.RemoteControl
 
 /**
  * Home-screen widget mirroring the big freeze button in the app: one circle that
  * freezes the bound PC, or releases it while a freeze is active.
  *
  * One widget controls one paired PC. The launcher runs [WidgetConfigureActivity]
- * when the widget is added so the PC can be picked.
+ * when the widget is added so the PC can be picked. Unlocks are handed to
+ * [ConfirmUnlockActivity] so the widget cannot bypass the phone's confirmation.
  */
 class FrostLockWidget : AppWidgetProvider() {
 
@@ -59,7 +47,7 @@ class FrostLockWidget : AppWidgetProvider() {
         // A broadcast receiver gets roughly ten seconds; keep the handle alive until
         // the network round trips finish, then let the system reclaim the process.
         val pending = goAsync()
-        WidgetWork.scope.launch {
+        RemoteControl.scope.launch {
             try {
                 handleTap(context, widgetId)
             } finally {
@@ -83,7 +71,7 @@ class FrostLockWidget : AppWidgetProvider() {
         internal fun refresh(context: Context, widgetIds: IntArray) {
             if (widgetIds.isEmpty()) return
             val app = context.applicationContext
-            WidgetWork.scope.launch { widgetIds.forEach { refreshWidget(app, it) } }
+            RemoteControl.scope.launch { widgetIds.forEach { refreshWidget(app, it) } }
         }
 
         internal fun tapIntent(context: Context, widgetId: Int): PendingIntent = PendingIntent.getBroadcast(
@@ -117,12 +105,21 @@ private suspend fun handleTap(context: Context, widgetId: Int) {
         return
     }
 
-    val profile = withContext(Dispatchers.IO) {
-        ProfileStore(context).all().firstOrNull { it.id == profileId }
-    } ?: run {
+    val profile = RemoteControl.profile(context, profileId) ?: run {
         // The PC was removed on the phone; make the widget point at setup again.
         store.unbind(widgetId)
         renderWidget(context, manager, widgetId, WidgetState(configured = false))
+        return
+    }
+
+    if (current.active) {
+        // Unlocking is gated: the shared screen asks the phone to confirm first.
+        if (!current.remoteReleaseAllowed) {
+            RemoteControl.toast(context, "Release is blocked by this PC.")
+            return
+        }
+        store.saveState(widgetId, current.copy(error = null))
+        openUnlock(context, profile.id)
         return
     }
 
@@ -130,14 +127,8 @@ private suspend fun handleTap(context: Context, widgetId: Int) {
     renderWidget(context, manager, widgetId, current.copy(busy = true, error = null).toWidgetState(true))
 
     try {
-        val snapshot = withContext(Dispatchers.IO) {
-            if (current.active) {
-                WidgetBackend.api.unlock(profile)
-            } else {
-                val options = WidgetBackend.api.lockSettings(profile)
-                WidgetBackend.api.freeze(profile, options.durationSeconds, options.mode)
-            }
-        }
+        val snapshot = RemoteControl.freeze(profile)
+        RemoteControl.reflect(context, profile, snapshot)
 
         val next = StoredState(
             known = true,
@@ -150,20 +141,16 @@ private suspend fun handleTap(context: Context, widgetId: Int) {
         )
         store.saveState(widgetId, next)
         renderWidget(context, manager, widgetId, next.toWidgetState(true))
-        toast(
+        RemoteControl.toast(
             context,
-            when {
-                snapshot.isActive && !current.active -> "Freeze confirmed by ${profile.name}."
-                !snapshot.isActive && current.active -> "Unlock confirmed by ${profile.name}."
-                snapshot.isActive -> "The freeze is still active on ${profile.name}."
-                else -> "${profile.name} is not frozen."
-            },
+            if (snapshot.isActive) "Freeze confirmed by ${profile.name}."
+            else "${profile.name} did not report an active freeze.",
         )
     } catch (error: Throwable) {
-        val next = current.copy(busy = false, known = true, error = shortError(error))
+        val next = current.copy(busy = false, known = true, error = RemoteControl.shortError(error))
         store.saveState(widgetId, next)
         renderWidget(context, manager, widgetId, next.toWidgetState(true))
-        toast(context, shortError(error))
+        RemoteControl.toast(context, RemoteControl.shortError(error))
     }
 }
 
@@ -175,9 +162,7 @@ private suspend fun refreshWidget(context: Context, widgetId: Int) {
         return
     }
 
-    val profile = withContext(Dispatchers.IO) {
-        ProfileStore(context).all().firstOrNull { it.id == profileId }
-    } ?: run {
+    val profile = RemoteControl.profile(context, profileId) ?: run {
         store.unbind(widgetId)
         renderWidget(context, manager, widgetId, WidgetState(configured = false))
         return
@@ -189,7 +174,8 @@ private suspend fun refreshWidget(context: Context, widgetId: Int) {
     }
 
     try {
-        val snapshot = withContext(Dispatchers.IO) { WidgetBackend.api.status(profile) }
+        val snapshot = RemoteControl.status(profile)
+        RemoteControl.reflect(context, profile, snapshot)
         val next = StoredState(
             known = true,
             active = snapshot.isActive,
@@ -202,7 +188,7 @@ private suspend fun refreshWidget(context: Context, widgetId: Int) {
         store.saveState(widgetId, next)
         renderWidget(context, manager, widgetId, next.toWidgetState(true))
     } catch (error: Throwable) {
-        val next = previous.copy(known = true, busy = false, error = shortError(error))
+        val next = previous.copy(known = true, busy = false, error = RemoteControl.shortError(error))
         store.saveState(widgetId, next)
         renderWidget(context, manager, widgetId, next.toWidgetState(true))
     }
@@ -275,29 +261,14 @@ private fun openConfigure(context: Context, widgetId: Int) {
     )
 }
 
+private fun openUnlock(context: Context, profileId: String) {
+    context.startActivity(
+        ConfirmUnlockActivity.intent(context, profileId)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+    )
+}
+
 private val COLOR_PRIMARY = 0xFF147DAB.toInt()
 private val COLOR_ACTIVE = 0xFFB3261E.toInt()
 private val COLOR_TEXT = 0xFF101E2E.toInt()
 private val COLOR_MUTED = 0xFF607181.toInt()
-
-/** Background work for widgets, which have no lifecycle of their own. */
-internal object WidgetWork {
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-}
-
-private object WidgetBackend {
-    val api = FrostLockApi(DeviceSigner())
-}
-
-private fun shortError(error: Throwable): String = when (error) {
-    is SocketTimeoutException, is ConnectException, is NoRouteToHostException, is UnknownHostException ->
-        "PC unreachable"
-    is javax.net.ssl.SSLException -> "Secure connection failed"
-    else -> error.message?.take(90)?.takeIf(String::isNotBlank) ?: "PC unreachable"
-}
-
-private fun toast(context: Context, message: String) {
-    Handler(Looper.getMainLooper()).post {
-        Toast.makeText(context.applicationContext, message, Toast.LENGTH_SHORT).show()
-    }
-}

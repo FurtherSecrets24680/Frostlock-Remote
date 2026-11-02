@@ -6,4 +6,16 @@
     <string name="widget_action_freeze">FREEZE</string>
     <string name="widget_action_unlock">UNLOCK</string>
     <string name="widget_status_ready">Tap to freeze</string>
+
+    <string name="tile_label">FrostLock PC</string>
+    <string name="tile_setup">Set up</string>
+    <string name="tile_working">Working</string>
+    <string name="tile_freeze">Freeze PC</string>
+    <string name="tile_unlock">Unlock PC</string>
+
+    <string name="confirm_unlock_title">Confirm unlock</string>
+    <string name="confirm_unlock_waiting">Waiting for your phone to confirm it is you.</string>
+
+    <string name="freeze_channel_name">Freeze status</string>
+    <string name="freeze_channel_description">Shows an active freeze on a paired PC and lets you release it.</string>
 </resources>

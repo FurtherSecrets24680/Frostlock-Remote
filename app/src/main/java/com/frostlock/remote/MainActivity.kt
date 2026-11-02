@@ -1,7 +1,9 @@
 package com.frostlock.remote
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -69,6 +71,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
+import com.frostlock.remote.control.ConfirmUnlockActivity
+import com.frostlock.remote.control.ControlStore
+import com.frostlock.remote.control.RemoteControl
 import com.frostlock.remote.data.*
 import com.frostlock.remote.ui.FrostTheme
 import com.frostlock.remote.ui.PcLockSettingsScreen
@@ -168,6 +173,11 @@ private fun RemoteApp(
                     val updated = profile.copy(lastSeenAt = System.currentTimeMillis())
                     withContext(Dispatchers.IO) { store.save(updated) }
                     pcs = pcs.map { if (it.profile.id == profile.id) PcState(updated, snapshot, false) else it }
+                    // Keep the freeze notification honest, but only for the PC the
+                    // notification speaks about so two PCs cannot flip it back and forth.
+                    if (ControlStore(context).defaultProfileId() == profile.id) {
+                        RemoteControl.reflect(context, updated, snapshot)
+                    }
                 }
                 .onFailure { err -> pcs = pcs.map { if (it.profile.id == profile.id) it.copy(checking = false, error = err.message ?: "PC unreachable") else it } }
             FrostLockWidget.refreshAll(context)
@@ -185,6 +195,7 @@ private fun RemoteApp(
                 .onSuccess { snapshot ->
                     pcs = pcs.map { if (it.profile.id == pc.profile.id) it.copy(snapshot = snapshot, error = null) else it }
                     toast = if (snapshot.isActive) "Freeze confirmed by ${pc.profile.name}." else "${pc.profile.name} did not report an active freeze."
+                    RemoteControl.reflect(context, pc.profile, snapshot)
                     feedback()
                 }
                 .onFailure { toast = it.message ?: "Freeze was not confirmed. Refresh status before retrying." }
@@ -193,23 +204,25 @@ private fun RemoteApp(
         }
     }
 
-    fun unlock(pc: PcState) {
+    val unlockLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK &&
+            result.data?.getBooleanExtra(ConfirmUnlockActivity.EXTRA_UNLOCKED, false) == true
+        ) {
+            feedback()
+        }
+        pcs.forEach { refresh(it.profile) }
+    }
+
+    fun requestUnlock(pc: PcState) {
         if (pc.error != null || pc.checking) {
             toast = "${pc.profile.name} is offline. Its state is unknown."
             return
         }
-        busy = true
-        scope.launch {
-            runCatching { withContext(Dispatchers.IO) { api.unlock(pc.profile) } }
-                .onSuccess { snapshot ->
-                    pcs = pcs.map { if (it.profile.id == pc.profile.id) it.copy(snapshot = snapshot, error = null) else it }
-                    toast = if (snapshot.isActive) "PC reports the freeze is still active." else "Unlock confirmed by ${pc.profile.name}."
-                    if (!snapshot.isActive) feedback()
-                }
-                .onFailure { toast = it.message ?: "Unlock was not confirmed. Refresh status before retrying." }
-            busy = false
-            FrostLockWidget.refreshAll(context)
-        }
+        // Unlocking always goes through the shared confirmation screen, which asks the
+        // phone to verify it is the owner before releasing the freeze.
+        unlockLauncher.launch(ConfirmUnlockActivity.intent(context, pc.profile.id))
     }
 
     fun removePc(profile: PcProfile) {
@@ -222,6 +235,20 @@ private fun RemoteApp(
             if (selectedPcId == profile.id) { selectedPcId = null; screen = Screen.HOME }
             toast = "Removed ${profile.name}. Revoke this phone on the PC too if the phone is lost."
             FrostLockWidget.refreshAll(context)
+        }
+    }
+
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { }
+
+    LaunchedEffect(Unit) {
+        // Android 13+ needs a runtime grant before the freeze notification can appear.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -276,6 +303,7 @@ private fun RemoteApp(
                             api.pair(invite, android.os.Build.MODEL.take(32), alias)
                         }
                         withContext(Dispatchers.IO) { store.save(profile) }
+                        ControlStore(context).setDefaultProfileId(profile.id)
                         pcs = pcs + PcState(profile)
                         screen = Screen.HOME
                         toast = "Pairing approved by ${profile.name}."
@@ -346,6 +374,8 @@ private fun RemoteApp(
             onRefresh = { pcs.forEach { refresh(it.profile) } },
             onOpen = { pc ->
                 selectedPcId = pc.profile.id
+                // Opening a PC makes it the target for the tile and notifications.
+                ControlStore(context).setDefaultProfileId(pc.profile.id)
                 lockSettings = null
                 lockSettingsPc = pc
                 lockSettingsLoadVersion++
@@ -369,7 +399,7 @@ private fun RemoteApp(
                     lockOptionsLoading = lockSettingsLoading,
                     onBack = { screen = Screen.HOME },
                     onToggle = {
-                        if (pc.snapshot?.isActive == true) unlock(pc)
+                        if (pc.snapshot?.isActive == true) requestUnlock(pc)
                         else controlOptions?.let { freeze(pc, it.durationSeconds, it.mode) }
                     },
                     onLockSettings = { screen = Screen.LOCK_SETTINGS },

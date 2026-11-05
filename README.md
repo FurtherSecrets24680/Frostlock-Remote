@@ -33,6 +33,12 @@ Tap a PC card to open its control page. The app checks the PC’s status and sav
 
 Use **Lock options** on that page to change the mode, duration, arm delay, safety auto-release, lock screen, and related behavior. Save to send the settings to Windows. The next freeze uses the saved mode and duration. The PC may also apply a safety auto-release limit to an indefinite freeze.
 
+## Task manager
+
+Open a PC and choose **Task manager** to see the processes running on Windows. Each row shows the program icon, CPU, working memory, disk activity, and TCP/UDP socket count. Search, filter apps or background processes, and sort by CPU, memory, disk, network, or name. Tap a process for its full executable path, publisher, version, session, start time, and remote endpoints.
+
+**End task** asks Windows to close the program first; **Force end** terminates it immediately. **Start task** runs an `.exe`, `.bat`, `.cmd`, or `.com` by full path with optional arguments. FrostLock, Windows core processes, and tasks the app cannot access are protected or reported with a reason. The PC owner must enable **Allow phone task control** in FrostLock Settings → LAN & phone. Nothing runs on Android; the phone only sends signed commands to the PC.
+
 Tap **Refresh** to check status again. If a PC is offline, the app disables actions that depend on knowing its state.
 
 ## Home screen widget

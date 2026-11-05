@@ -123,6 +123,119 @@ data class PcLockSettings(
     }
 }
 
+data class WindowsTask(
+    val pid: Int,
+    val name: String,
+    val displayName: String,
+    val publisher: String?,
+    val version: String?,
+    val path: String?,
+    val iconKey: String?,
+    val cpuPercent: Double,
+    val workingSetBytes: Long,
+    val privateBytes: Long,
+    val diskReadBytes: Long,
+    val diskWriteBytes: Long,
+    val diskReadBytesPerSec: Double,
+    val diskWriteBytesPerSec: Double,
+    val connectionCount: Int,
+    val remoteEndpoints: List<String>,
+    val threadCount: Int,
+    val sessionId: Int,
+    val startedAtMs: Long,
+    val mainWindowTitle: String?,
+    val hasWindow: Boolean,
+    val elevated: Boolean?,
+    val protected: Boolean,
+    val protectedReason: String?,
+)
+
+data class WindowsTaskSnapshot(
+    val sampledAtMs: Long,
+    val sampleMilliseconds: Int,
+    val machineName: String,
+    val userName: String,
+    val controllerElevated: Boolean,
+    val totalCpuPercent: Double,
+    val totalMemoryBytes: Long,
+    val usedMemoryBytes: Long,
+    val networkReceiveBytesPerSec: Long,
+    val networkSendBytesPerSec: Long,
+    val processCount: Int,
+    val appCount: Int,
+    val connectionCount: Int,
+    val processes: List<WindowsTask>,
+) {
+    companion object {
+        fun fromJson(json: JSONObject): WindowsTaskSnapshot {
+            val array = json.optJSONArray("processes")
+            val processes = buildList {
+                if (array != null) {
+                    for (index in 0 until array.length()) {
+                        array.optJSONObject(index)?.let { add(parseWindowsTask(it)) }
+                    }
+                }
+            }
+            return WindowsTaskSnapshot(
+                sampledAtMs = json.optLong("sampledAtMs"),
+                sampleMilliseconds = json.optInt("sampleMilliseconds", 350),
+                machineName = json.optString("machineName", "Windows PC"),
+                userName = json.optString("userName", ""),
+                controllerElevated = json.optBoolean("controllerElevated", false),
+                totalCpuPercent = json.optDouble("totalCpuPercent", 0.0),
+                totalMemoryBytes = json.optLong("totalMemoryBytes"),
+                usedMemoryBytes = json.optLong("usedMemoryBytes"),
+                networkReceiveBytesPerSec = json.optLong("networkReceiveBytesPerSec"),
+                networkSendBytesPerSec = json.optLong("networkSendBytesPerSec"),
+                processCount = json.optInt("processCount", processes.size),
+                appCount = json.optInt("appCount"),
+                connectionCount = json.optInt("connectionCount"),
+                processes = processes,
+            )
+        }
+    }
+}
+
+data class StartedTaskSummary(val pid: Int, val name: String)
+
+private fun parseWindowsTask(json: JSONObject): WindowsTask {
+    val endpoints = json.optJSONArray("remoteEndpoints")
+    val remoteEndpoints = buildList {
+        if (endpoints != null) {
+            for (index in 0 until endpoints.length()) {
+                endpoints.optString(index).takeIf(String::isNotBlank)?.let(::add)
+            }
+        }
+    }
+    val elevatedValue = if (json.has("elevated") && !json.isNull("elevated")) json.optBoolean("elevated") else null
+    return WindowsTask(
+        pid = json.optInt("pid"),
+        name = json.optString("name", "process"),
+        displayName = json.optString("displayName", json.optString("name", "Process")),
+        publisher = json.optString("publisher").takeIf(String::isNotBlank),
+        version = json.optString("version").takeIf(String::isNotBlank),
+        path = json.optString("path").takeIf(String::isNotBlank),
+        iconKey = json.optString("iconKey").takeIf(String::isNotBlank),
+        cpuPercent = json.optDouble("cpuPercent", 0.0),
+        workingSetBytes = json.optLong("workingSetBytes"),
+        privateBytes = json.optLong("privateBytes"),
+        diskReadBytes = json.optLong("diskReadBytes"),
+        diskWriteBytes = json.optLong("diskWriteBytes"),
+        diskReadBytesPerSec = json.optDouble("diskReadBytesPerSec", 0.0),
+        diskWriteBytesPerSec = json.optDouble("diskWriteBytesPerSec", 0.0),
+        connectionCount = json.optInt("connectionCount"),
+        remoteEndpoints = remoteEndpoints,
+        threadCount = json.optInt("threadCount"),
+        sessionId = json.optInt("sessionId", -1),
+        startedAtMs = json.optLong("startedAtMs"),
+        mainWindowTitle = json.optString("mainWindowTitle").takeIf(String::isNotBlank),
+        hasWindow = json.optBoolean("hasWindow", false),
+        elevated = elevatedValue,
+        protected = json.optBoolean("protected", false),
+        protectedReason = json.optString("protectedReason").takeIf(String::isNotBlank),
+    )
+}
+
 internal fun JSONObject.toProfile(): PcProfile = PcProfile(
     id = getString("id"), name = getString("name"), endpoint = getString("endpoint"),
     certificateSha256 = getString("certificateSha256"), keyAlias = getString("keyAlias"),

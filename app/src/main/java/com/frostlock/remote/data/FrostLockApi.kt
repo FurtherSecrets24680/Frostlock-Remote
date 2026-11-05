@@ -1,10 +1,12 @@
 package com.frostlock.remote.data
 
 import android.annotation.SuppressLint
+import android.util.Base64
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
@@ -98,6 +100,56 @@ class FrostLockApi(private val signer: DeviceSigner) {
     suspend fun unlock(profile: PcProfile): FreezeSnapshot {
         val body = JSONObject().put("idempotencyKey", java.util.UUID.randomUUID().toString())
         return FreezeSnapshot.fromJson(authenticated(profile, "POST", "/v1/unlock", body))
+    }
+
+    suspend fun taskList(profile: PcProfile): WindowsTaskSnapshot =
+        WindowsTaskSnapshot.fromJson(authenticated(profile, "GET", "/v1/tasks", null))
+
+    suspend fun endTask(profile: PcProfile, pid: Int, force: Boolean = false) {
+        authenticated(profile, "POST", "/v1/tasks/kill", JSONObject().put("pid", pid).put("force", force))
+    }
+
+    suspend fun startTask(
+        profile: PcProfile,
+        path: String,
+        arguments: List<String> = emptyList(),
+        workingDirectory: String? = null,
+    ): StartedTaskSummary {
+        val body = JSONObject().put("path", path)
+        if (arguments.isNotEmpty()) body.put("arguments", JSONArray(arguments))
+        if (!workingDirectory.isNullOrBlank()) body.put("workingDirectory", workingDirectory)
+        val data = authenticated(profile, "POST", "/v1/tasks/start", body)
+        return StartedTaskSummary(
+            pid = data.optInt("pid"),
+            name = data.optString("name", path.substringAfterLast('\\')),
+        )
+    }
+
+    /**
+     * Icons are fetched in small batches so one refresh never builds a huge response.
+     * The PC caches the PNGs, and the phone keeps decoded bitmaps for the session.
+     */
+    suspend fun taskIcons(profile: PcProfile, keys: Collection<String>): Map<String, ByteArray> {
+        val result = mutableMapOf<String, ByteArray>()
+        keys.asSequence().filter(String::isNotBlank).distinct().chunked(24).forEach { batch ->
+            val data = authenticated(
+                profile,
+                "POST",
+                "/v1/tasks/icons",
+                JSONObject().put("keys", JSONArray(batch)),
+            )
+            val icons = data.optJSONArray("icons") ?: return@forEach
+            for (index in 0 until icons.length()) {
+                val icon = icons.optJSONObject(index) ?: continue
+                val key = icon.optString("key")
+                val png = icon.optString("pngBase64")
+                if (key.isNotBlank() && png.isNotBlank()) {
+                    runCatching { Base64.decode(png, Base64.NO_WRAP) }
+                        .onSuccess { result[key] = it }
+                }
+            }
+        }
+        return result
     }
 
     private suspend fun authenticated(profile: PcProfile, method: String, path: String, body: JSONObject?): JSONObject {

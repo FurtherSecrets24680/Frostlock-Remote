@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -78,6 +79,7 @@ import com.frostlock.remote.data.*
 import com.frostlock.remote.ui.FrostTheme
 import com.frostlock.remote.ui.PcLockSettingsScreen
 import com.frostlock.remote.ui.SettingsScreen
+import com.frostlock.remote.ui.TaskManagerScreen
 import com.frostlock.remote.ui.relativeTime
 import com.frostlock.remote.widget.FrostLockWidget
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
@@ -95,7 +97,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-private enum class Screen { HOME, PAIR, SETTINGS, CONTROL, LOCK_SETTINGS }
+private enum class Screen { HOME, PAIR, SETTINGS, CONTROL, LOCK_SETTINGS, TASKS }
 private data class PcState(val profile: PcProfile, val snapshot: FreezeSnapshot? = null, val checking: Boolean = true, val error: String? = null)
 
 class MainActivity : ComponentActivity() {
@@ -268,7 +270,7 @@ private fun RemoteApp(
     }
 
     BackHandler(enabled = screen != Screen.HOME) {
-        screen = if (screen == Screen.LOCK_SETTINGS) Screen.CONTROL else Screen.HOME
+        screen = if (screen == Screen.LOCK_SETTINGS || screen == Screen.TASKS) Screen.CONTROL else Screen.HOME
         toast = null
     }
 
@@ -329,6 +331,20 @@ private fun RemoteApp(
             onReset = { applyPreferences { AppPreferences() } },
             onBack = { screen = Screen.HOME; toast = null },
         )
+
+        Screen.TASKS -> {
+            val pc = pcs.firstOrNull { it.profile.id == selectedPcId }
+            if (pc == null) {
+                ControlErrorScreen("This PC is no longer paired.") { screen = Screen.HOME }
+            } else {
+                TaskManagerScreen(
+                    api = api,
+                    profile = pc.profile,
+                    onBack = { screen = Screen.CONTROL },
+                    onToast = { toast = it },
+                )
+            }
+        }
 
         Screen.LOCK_SETTINGS -> {
             val pc = lockSettingsPc
@@ -403,6 +419,7 @@ private fun RemoteApp(
                         else controlOptions?.let { freeze(pc, it.durationSeconds, it.mode) }
                     },
                     onLockSettings = { screen = Screen.LOCK_SETTINGS },
+                    onTaskManager = { screen = Screen.TASKS },
                     onRefresh = { refresh(pc.profile) },
                     onDetails = { toast = "${pc.profile.endpoint.removePrefix("https://")} · certificate ${pc.profile.certificateSha256.take(16)}…" },
                 )
@@ -719,6 +736,7 @@ private fun PcControlScreen(
     onBack: () -> Unit,
     onToggle: () -> Unit,
     onLockSettings: () -> Unit,
+    onTaskManager: () -> Unit,
     onRefresh: () -> Unit,
     onDetails: () -> Unit,
 ) {
@@ -750,7 +768,11 @@ private fun PcControlScreen(
                 }
                 IconButton(onClick = onRefresh, enabled = !pc.checking) { Icon(Icons.Default.Refresh, "Refresh status") }
             }
-            Spacer(Modifier.height(20.dp))
+            Column(
+                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(top = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+            Spacer(Modifier.height(14.dp))
             Text(
                 when {
                     pc.checking -> "Checking this PC"
@@ -816,23 +838,42 @@ private fun PcControlScreen(
             if (active && pc.snapshot?.remoteReleaseAllowed == false) {
                 Text("PIN or PC policy does not allow remote release.", color = colors.error, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(20.dp))
             Surface(
                 color = colors.surface,
                 shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth().clickable(onClick = onLockSettings),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Row(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Settings, null, tint = colors.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Lock options", fontWeight = FontWeight.SemiBold, color = colors.onSurface)
-                        Text("Mode, duration, safety and lock-screen settings", color = colors.onSurfaceVariant, fontSize = 12.sp)
+                Column {
+                    Row(
+                        Modifier.fillMaxWidth().clickable(onClick = onTaskManager).padding(horizontal = 16.dp, vertical = 15.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Memory, null, tint = colors.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Task manager", fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+                            Text("Processes, CPU, memory, disk and network on this PC", color = colors.onSurfaceVariant, fontSize = 12.sp)
+                        }
+                        Icon(Icons.Default.ArrowForward, null, tint = colors.onSurfaceVariant)
                     }
-                    Icon(Icons.Default.ArrowForward, null, tint = colors.onSurfaceVariant)
+                    HorizontalDivider(color = colors.outlineVariant, modifier = Modifier.padding(horizontal = 16.dp))
+                    Row(
+                        Modifier.fillMaxWidth().clickable(onClick = onLockSettings).padding(horizontal = 16.dp, vertical = 15.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(Icons.Default.Settings, null, tint = colors.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Lock options", fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+                            Text("Mode, duration, safety and lock-screen settings", color = colors.onSurfaceVariant, fontSize = 12.sp)
+                        }
+                        Icon(Icons.Default.ArrowForward, null, tint = colors.onSurfaceVariant)
+                    }
                 }
             }
             TextButton(onClick = onDetails, modifier = Modifier.padding(top = 4.dp)) { Text("Connection details") }
+            }
         }
     }
 }

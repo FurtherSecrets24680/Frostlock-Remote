@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
@@ -110,49 +111,34 @@ private enum class TaskFilter(val label: String) {
 }
 
 private object TaskPalette {
-    val backgroundTop = Color(0xFF081B3A)
-    val backgroundMid = Color(0xFF06142B)
-    val backgroundBottom = Color(0xFF040B18)
-    val card = Color(0xFF0D2447)
-    val cardDeep = Color(0xFF091A35)
-    val border = Color(0x335E9BE0)
-    val borderSoft = Color(0x225E9BE0)
-    val text = Color(0xFFF2F7FF)
-    val muted = Color(0xFF93A8C9)
-    val faint = Color(0xFF6C82A6)
-    val blue = Color(0xFF4DA3FF)
-    val blueDeep = Color(0xFF2E7CF5)
-    val purple = Color(0xFFB28CFF)
-    val green = Color(0xFF4CD7A0)
-    val orange = Color(0xFFFFB454)
-    val red = Color(0xFFFF6B81)
-    val chip = Color(0x1A7DA9E8)
+    @Composable private fun dark() = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    @get:Composable val backgroundTop get() = if (dark()) Color(0xFF10243A) else Color(0xFFF5F8FA)
+    @get:Composable val backgroundMid get() = MaterialTheme.colorScheme.background
+    @get:Composable val backgroundBottom get() = if (dark()) Color(0xFF0B141B) else Color(0xFFEEF3F6)
+    @get:Composable val card get() = MaterialTheme.colorScheme.surface
+    @get:Composable val cardDeep get() = if (dark()) Color(0xFF172631) else Color(0xFFF7F9FA)
+    @get:Composable val border get() = MaterialTheme.colorScheme.outline.copy(alpha = if (dark()) 0.55f else 0.75f)
+    @get:Composable val borderSoft get() = MaterialTheme.colorScheme.outlineVariant
+    @get:Composable val text get() = MaterialTheme.colorScheme.onSurface
+    @get:Composable val muted get() = MaterialTheme.colorScheme.onSurfaceVariant
+    @get:Composable val faint get() = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f)
+    @get:Composable val blue get() = MaterialTheme.colorScheme.primary
+    @get:Composable val blueDeep get() = if (dark()) Color(0xFF2E7CF5) else Color(0xFF147DAB)
+    @get:Composable val purple get() = if (dark()) Color(0xFFB28CFF) else Color(0xFF7250A8)
+    @get:Composable val green get() = MaterialTheme.colorScheme.tertiary
+    @get:Composable val orange get() = if (dark()) Color(0xFFFFB454) else Color(0xFF9A5B00)
+    @get:Composable val red get() = MaterialTheme.colorScheme.error
+    @get:Composable val chip get() = if (dark()) Color(0x1A7DA9E8) else Color(0xFFE7F1F6)
 }
 
-private val TaskDarkScheme = darkColorScheme(
-    primary = TaskPalette.blue,
-    onPrimary = Color(0xFF04101F),
-    secondary = TaskPalette.purple,
-    background = TaskPalette.backgroundMid,
-    onBackground = TaskPalette.text,
-    surface = TaskPalette.card,
-    onSurface = TaskPalette.text,
-    surfaceVariant = Color(0xFF122A4F),
-    onSurfaceVariant = TaskPalette.muted,
-    outline = TaskPalette.border,
-    outlineVariant = TaskPalette.borderSoft,
-    error = TaskPalette.red,
-    onError = Color(0xFF20060C),
-    errorContainer = Color(0xFF3A1420),
-    onErrorContainer = Color(0xFFFFC2CB),
+@Composable
+private fun taskGlassBrush() = Brush.verticalGradient(
+    0f to MaterialTheme.colorScheme.surface,
+    1f to MaterialTheme.colorScheme.surface,
 )
 
-private val TaskGlassBrush = Brush.verticalGradient(
-    0f to Color(0xE60E274E),
-    1f to Color(0xE6081A35),
-)
-
-private val TaskBackgroundBrush = Brush.verticalGradient(
+@Composable
+private fun taskBackgroundBrush() = Brush.verticalGradient(
     0f to TaskPalette.backgroundTop,
     0.45f to TaskPalette.backgroundMid,
     1f to TaskPalette.backgroundBottom,
@@ -213,7 +199,7 @@ fun TaskManagerScreen(
     val processHistory = remember { mutableStateMapOf<Int, MetricHistory>() }
     val icons = remember { mutableStateMapOf<String, ImageBitmap>() }
 
-    TaskDarkSystemBars()
+    TaskSystemBars()
 
     suspend fun loadSnapshot(showSpinner: Boolean) {
         if (showSpinner) refreshing = true
@@ -306,9 +292,7 @@ fun TaskManagerScreen(
             )
     }
 
-    MaterialTheme(colorScheme = TaskDarkScheme) {
-        Box(Modifier.fillMaxSize().background(TaskBackgroundBrush)) {
-            TaskBackgroundGlow()
+    Box(Modifier.fillMaxSize().background(taskBackgroundBrush())) {
             Scaffold(containerColor = Color.Transparent) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding)) {
                     TaskTopBar(
@@ -441,13 +425,14 @@ fun TaskManagerScreen(
                 },
             )
         }
-    }
 }
 
 @Composable
-private fun TaskDarkSystemBars() {
+private fun TaskSystemBars() {
     val view = LocalView.current
-    DisposableEffect(Unit) {
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val barColor = if (isDark) 0xFF0B141B else 0xFFF5F8FA
+    DisposableEffect(isDark) {
         val window = (view.context as? Activity)?.window
             ?: return@DisposableEffect onDispose { }
         val controller = WindowCompat.getInsetsController(window, view)
@@ -455,40 +440,16 @@ private fun TaskDarkSystemBars() {
         val previousLightNavigation = controller.isAppearanceLightNavigationBars
         @Suppress("DEPRECATION") val previousStatus = window.statusBarColor
         @Suppress("DEPRECATION") val previousNavigation = window.navigationBarColor
-        controller.isAppearanceLightStatusBars = false
-        controller.isAppearanceLightNavigationBars = false
-        @Suppress("DEPRECATION") window.statusBarColor = 0xFF06142B.toInt()
-        @Suppress("DEPRECATION") window.navigationBarColor = 0xFF040B18.toInt()
+        controller.isAppearanceLightStatusBars = !isDark
+        controller.isAppearanceLightNavigationBars = !isDark
+        @Suppress("DEPRECATION") window.statusBarColor = barColor.toInt()
+        @Suppress("DEPRECATION") window.navigationBarColor = barColor.toInt()
         onDispose {
             controller.isAppearanceLightStatusBars = previousLightStatus
             controller.isAppearanceLightNavigationBars = previousLightNavigation
             @Suppress("DEPRECATION") window.statusBarColor = previousStatus
             @Suppress("DEPRECATION") window.navigationBarColor = previousNavigation
         }
-    }
-}
-
-@Composable
-private fun TaskBackgroundGlow() {
-    Canvas(Modifier.fillMaxSize()) {
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(TaskPalette.blue.copy(alpha = 0.20f), Color.Transparent),
-                center = Offset(size.width * 0.88f, size.height * 0.04f),
-                radius = size.width * 0.85f,
-            ),
-            radius = size.width * 0.85f,
-            center = Offset(size.width * 0.88f, size.height * 0.04f),
-        )
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(TaskPalette.purple.copy(alpha = 0.12f), Color.Transparent),
-                center = Offset(size.width * 0.05f, size.height * 0.72f),
-                radius = size.width * 0.7f,
-            ),
-            radius = size.width * 0.7f,
-            center = Offset(size.width * 0.05f, size.height * 0.72f),
-        )
     }
 }
 
@@ -868,7 +829,7 @@ private fun SortMenu(current: TaskSort, onSelect: (TaskSort) -> Unit) {
         DropdownMenu(
             expanded = open,
             onDismissRequest = { open = false },
-            containerColor = Color(0xFF0D2447),
+            containerColor = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, TaskPalette.border),
             shape = RoundedCornerShape(14.dp),
         ) {
@@ -1058,7 +1019,7 @@ private fun MetricPill(icon: ImageVector, text: String, tint: Color) {
         Text(
             text,
             fontSize = 9.5.sp,
-            color = Color(0xFFD7E6FF),
+            color = TaskPalette.text,
             maxLines = 1,
         )
     }
@@ -1090,11 +1051,7 @@ private fun TaskDetailDialog(
                     .heightIn(max = screenHeight * 0.96f)
                     .fillMaxHeight()
                     .clip(shape)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF0E2A55), Color(0xFF081A36), Color(0xFF061226)),
-                        ),
-                    )
+                    .background(taskGlassBrush())
                     .border(1.dp, TaskPalette.blue.copy(alpha = 0.28f), shape),
             ) {
                 Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp)) {
@@ -1480,7 +1437,7 @@ private fun EndTaskDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!busy) onDismiss() },
-        containerColor = Color(0xFF0D2447),
+        containerColor = MaterialTheme.colorScheme.surface,
         titleContentColor = TaskPalette.text,
         textContentColor = TaskPalette.muted,
         iconContentColor = TaskPalette.red,
@@ -1547,8 +1504,8 @@ private fun StartTaskDialog(
         focusedLabelColor = TaskPalette.blue,
         unfocusedLabelColor = TaskPalette.muted,
         cursorColor = TaskPalette.blue,
-        focusedContainerColor = Color(0x330B1E3A),
-        unfocusedContainerColor = Color(0x220B1E3A),
+        focusedContainerColor = TaskPalette.chip,
+        unfocusedContainerColor = TaskPalette.chip.copy(alpha = 0.55f),
     )
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -1561,11 +1518,7 @@ private fun StartTaskDialog(
                     .widthIn(max = 560.dp)
                     .heightIn(max = screenHeight * 0.9f)
                     .clip(shape)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF0E2A55), Color(0xFF081A36), Color(0xFF061226)),
-                        ),
-                    )
+                    .background(taskGlassBrush())
                     .border(1.dp, TaskPalette.blue.copy(alpha = 0.28f), shape),
             ) {
                 Column(
@@ -1685,7 +1638,7 @@ private fun PrimaryButton(
                 if (enabled) {
                     Brush.horizontalGradient(listOf(TaskPalette.blueDeep, Color(0xFF57B8FF)))
                 } else {
-                    SolidColor(Color(0xFF10294B))
+                    SolidColor(MaterialTheme.colorScheme.surfaceVariant)
                 },
             )
             .clickable(enabled = enabled, onClick = onClick),
@@ -1695,7 +1648,7 @@ private fun PrimaryButton(
             Icon(
                 icon,
                 null,
-                tint = if (enabled) Color(0xFF06142B) else TaskPalette.faint,
+                tint = if (enabled) MaterialTheme.colorScheme.onPrimary else TaskPalette.faint,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(7.dp))
@@ -1703,7 +1656,7 @@ private fun PrimaryButton(
                 text,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (enabled) Color(0xFF06142B) else TaskPalette.faint,
+                color = if (enabled) MaterialTheme.colorScheme.onPrimary else TaskPalette.faint,
             )
         }
     }
@@ -1721,7 +1674,7 @@ private fun SecondaryButton(
     Box(
         modifier.height(50.dp)
             .clip(shape)
-            .background(Color(0x1F7DA9E8))
+            .background(TaskPalette.chip)
             .border(1.dp, TaskPalette.border, shape)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -1756,7 +1709,7 @@ private fun GlassChip(
         Modifier.clip(shape)
             .background(
                 if (selected) {
-                    Brush.horizontalGradient(listOf(Color(0xFF2E7CF5), Color(0xFF57B8FF)))
+                Brush.horizontalGradient(listOf(TaskPalette.blueDeep, TaskPalette.blue))
                 } else {
                     SolidColor(TaskPalette.chip)
                 },
@@ -1773,7 +1726,7 @@ private fun GlassChip(
         Icon(
             icon,
             null,
-            tint = if (selected) Color(0xFF06142B) else TaskPalette.blue,
+            tint = if (selected) MaterialTheme.colorScheme.onPrimary else TaskPalette.blue,
             modifier = Modifier.size(15.dp),
         )
         Spacer(Modifier.width(6.dp))
@@ -1781,7 +1734,7 @@ private fun GlassChip(
             label,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = if (selected) Color(0xFF06142B) else TaskPalette.text,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else TaskPalette.text,
         )
     }
 }
@@ -1813,7 +1766,7 @@ private fun CircleGlassButton(
     Box(
         Modifier.size(size)
             .clip(CircleShape)
-            .background(Color(0x1F6FA9EE))
+            .background(TaskPalette.chip)
             .border(1.dp, TaskPalette.border, CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -1842,7 +1795,7 @@ private fun TaskAppIcon(icon: ImageBitmap?, name: String, size: Dp, radius: Dp) 
     Box(
         Modifier.size(size)
             .clip(shape)
-            .background(Brush.linearGradient(listOf(Color(0xFF173C6B), Color(0xFF0B2346))))
+            .background(Brush.linearGradient(listOf(TaskPalette.chip, TaskPalette.cardDeep)))
             .border(1.dp, TaskPalette.border, shape),
         contentAlignment = Alignment.Center,
     ) {
@@ -1871,7 +1824,7 @@ private fun GlassSurface(
 ) {
     Box(
         modifier.clip(shape)
-            .background(TaskGlassBrush)
+            .background(taskGlassBrush())
             .border(1.dp, TaskPalette.border, shape),
         content = content,
     )
@@ -1933,6 +1886,7 @@ private fun Sparkline(
     }
 }
 
+@Composable
 private fun TaskPalette.tertiaryBorder(): Color = purple.copy(alpha = 0.35f)
 
 private fun taskKind(task: WindowsTask): String = when {

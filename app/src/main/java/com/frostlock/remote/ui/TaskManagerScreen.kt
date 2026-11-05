@@ -2,13 +2,13 @@ package com.frostlock.remote.ui
 
 import android.app.Activity
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,8 +20,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -29,7 +27,6 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Layers
@@ -48,7 +45,6 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.filled.Window
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -67,6 +63,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -112,10 +109,6 @@ private enum class TaskFilter(val label: String) {
 
 private object TaskPalette {
     @Composable private fun dark() = MaterialTheme.colorScheme.background.luminance() < 0.5f
-    @get:Composable val backgroundTop get() = if (dark()) Color(0xFF10243A) else Color(0xFFF5F8FA)
-    @get:Composable val backgroundMid get() = MaterialTheme.colorScheme.background
-    @get:Composable val backgroundBottom get() = if (dark()) Color(0xFF0B141B) else Color(0xFFEEF3F6)
-    @get:Composable val card get() = MaterialTheme.colorScheme.surface
     @get:Composable val cardDeep get() = if (dark()) Color(0xFF172631) else Color(0xFFF7F9FA)
     @get:Composable val border get() = MaterialTheme.colorScheme.outline.copy(alpha = if (dark()) 0.55f else 0.75f)
     @get:Composable val borderSoft get() = MaterialTheme.colorScheme.outlineVariant
@@ -130,19 +123,6 @@ private object TaskPalette {
     @get:Composable val red get() = MaterialTheme.colorScheme.error
     @get:Composable val chip get() = if (dark()) Color(0x1A7DA9E8) else Color(0xFFE7F1F6)
 }
-
-@Composable
-private fun taskGlassBrush() = Brush.verticalGradient(
-    0f to MaterialTheme.colorScheme.surface,
-    1f to MaterialTheme.colorScheme.surface,
-)
-
-@Composable
-private fun taskBackgroundBrush() = Brush.verticalGradient(
-    0f to TaskPalette.backgroundTop,
-    0.45f to TaskPalette.backgroundMid,
-    1f to TaskPalette.backgroundBottom,
-)
 
 private const val HistoryLimit = 32
 
@@ -188,6 +168,7 @@ fun TaskManagerScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
     var autoRefresh by remember { mutableStateOf(true) }
+    var processPage by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf(TaskSort.CPU) }
     var filter by remember { mutableStateOf(TaskFilter.ALL) }
@@ -200,6 +181,7 @@ fun TaskManagerScreen(
     val icons = remember { mutableStateMapOf<String, ImageBitmap>() }
 
     TaskSystemBars()
+    BackHandler(enabled = processPage) { processPage = false }
 
     suspend fun loadSnapshot(showSpinner: Boolean) {
         if (showSpinner) refreshing = true
@@ -292,14 +274,15 @@ fun TaskManagerScreen(
             )
     }
 
-    Box(Modifier.fillMaxSize().background(taskBackgroundBrush())) {
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             Scaffold(containerColor = Color.Transparent) { padding ->
                 Column(Modifier.fillMaxSize().padding(padding)) {
                     TaskTopBar(
+                        title = if (processPage) "Processes" else "Task manager",
                         machine = snapshot?.machineName ?: profile.name,
                         live = autoRefresh,
                         refreshing = refreshing,
-                        onBack = onBack,
+                        onBack = { if (processPage) processPage = false else onBack() },
                         onToggleLive = { autoRefresh = !autoRefresh },
                         onRefresh = { scope.launch { loadSnapshot(true) } },
                     )
@@ -309,31 +292,38 @@ fun TaskManagerScreen(
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 28.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        item(key = "summary") {
-                            MachineCard(
-                                snapshot = snapshot,
-                                history = systemHistory,
-                                connected = snapshot != null && error == null,
-                                connecting = snapshot == null && error == null,
-                            )
-                        }
-
-                        item(key = "search") {
-                            TaskSearchField(
-                                value = search,
-                                onValueChange = { search = it.take(80) },
-                                onClear = { search = "" },
-                            )
-                        }
-
-                        item(key = "filters") {
-                            TaskFilterRow(
-                                filter = filter,
-                                sort = sort,
-                                onFilter = { filter = it },
-                                onSort = { sort = it },
-                                onStart = { startOpen = true },
-                            )
+                        if (!processPage) {
+                            item(key = "summary") {
+                                MachineCard(
+                                    snapshot = snapshot,
+                                    history = systemHistory,
+                                    connected = snapshot != null && error == null,
+                                    connecting = snapshot == null && error == null,
+                                )
+                            }
+                            item(key = "manage-processes") {
+                                ManageProcessesCard(
+                                    count = snapshot?.processCount,
+                                    onClick = { processPage = true },
+                                )
+                            }
+                        } else {
+                            item(key = "search") {
+                                ProcessSearchRow(
+                                    value = search,
+                                    onValueChange = { search = it.take(80) },
+                                    onClear = { search = "" },
+                                    onStart = { startOpen = true },
+                                )
+                            }
+                            item(key = "filters") {
+                                TaskFilterRow(
+                                    filter = filter,
+                                    sort = sort,
+                                    onFilter = { filter = it },
+                                    onSort = { sort = it },
+                                )
+                            }
                         }
 
                         if (error != null) {
@@ -344,12 +334,14 @@ fun TaskManagerScreen(
                             }
                         }
 
-                        item(key = "count") {
-                            TaskCountRow(
-                                count = processes.size,
-                                snapshot = snapshot,
-                                autoRefresh = autoRefresh,
-                            )
+                        if (processPage) {
+                            item(key = "count") {
+                                TaskCountRow(
+                                    count = processes.size,
+                                    snapshot = snapshot,
+                                    autoRefresh = autoRefresh,
+                                )
+                            }
                         }
 
                         if (snapshot == null && refreshing) {
@@ -363,12 +355,14 @@ fun TaskManagerScreen(
                             }
                         }
 
-                        items(processes, key = { it.pid }) { task ->
-                            TaskRow(
-                                task = task,
-                                icon = task.iconKey?.let(icons::get),
-                                onClick = { selected = task },
-                            )
+                        if (processPage) {
+                            items(processes, key = { it.pid }) { task ->
+                                TaskRow(
+                                    task = task,
+                                    icon = task.iconKey?.let(icons::get),
+                                    onClick = { selected = task },
+                                )
+                            }
                         }
                     }
                 }
@@ -455,6 +449,7 @@ private fun TaskSystemBars() {
 
 @Composable
 private fun TaskTopBar(
+    title: String,
     machine: String,
     live: Boolean,
     refreshing: Boolean,
@@ -477,7 +472,7 @@ private fun TaskTopBar(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                "Task manager",
+                title,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 color = TaskPalette.text,
@@ -492,22 +487,11 @@ private fun TaskTopBar(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        GlassPill(
-            onClick = onToggleLive,
-            borderColor = TaskPalette.blue.copy(alpha = 0.35f),
-        ) {
+        IconButton(onClick = onToggleLive) {
             Icon(
                 if (live) Icons.Default.Pause else Icons.Default.PlayArrow,
-                null,
+                contentDescription = if (live) "Pause live updates" else "Resume live updates",
                 tint = TaskPalette.blue,
-                modifier = Modifier.size(14.dp),
-            )
-            Spacer(Modifier.width(5.dp))
-            Text(
-                if (live) "Pause" else "Live",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TaskPalette.text,
             )
         }
         Spacer(Modifier.width(8.dp))
@@ -543,17 +527,13 @@ private fun MachineCard(
                 Box(
                     Modifier.size(46.dp)
                         .clip(RoundedCornerShape(13.dp))
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xFF3E8BFF), Color(0xFF6FC2FF)),
-                            ),
-                        ),
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         Icons.Default.GridView,
                         null,
-                        tint = Color(0xFF06142B),
+                        tint = TaskPalette.blue,
                         modifier = Modifier.size(26.dp),
                     )
                 }
@@ -590,15 +570,10 @@ private fun MachineCard(
                     }
                 }
                 if (snapshot?.controllerElevated == true) {
-                    GlassPill(borderColor = TaskPalette.tertiaryBorder(), onClick = {}) {
-                        Icon(
-                            Icons.Default.Shield,
-                            null,
-                            tint = TaskPalette.purple,
-                            modifier = Modifier.size(13.dp),
-                        )
-                        Spacer(Modifier.width(5.dp))
-                        Text("Admin", fontSize = 10.sp, color = TaskPalette.purple)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Shield, null, tint = TaskPalette.green, modifier = Modifier.size(14.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Admin", fontSize = 11.sp, color = TaskPalette.muted)
                     }
                 }
             }
@@ -667,12 +642,8 @@ private fun SummaryTile(
     Column(
         modifier.height(106.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(tint.copy(alpha = 0.15f), tint.copy(alpha = 0.03f)),
-                ),
-            )
-            .border(1.dp, tint.copy(alpha = 0.26f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, TaskPalette.border, RoundedCornerShape(16.dp))
             .padding(horizontal = 11.dp, vertical = 9.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -697,7 +668,7 @@ private fun SummaryTile(
         )
         Text(
             caption,
-            fontSize = 9.sp,
+            fontSize = 11.sp,
             color = TaskPalette.faint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -716,6 +687,7 @@ private fun TaskSearchField(
     value: String,
     onValueChange: (String) -> Unit,
     onClear: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(18.dp)
@@ -725,7 +697,7 @@ private fun TaskSearchField(
         singleLine = true,
         textStyle = TextStyle(color = TaskPalette.text, fontSize = 15.sp),
         cursorBrush = SolidColor(TaskPalette.blue),
-        modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+        modifier = modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
         decorationBox = { inner ->
             Row(
                 Modifier.fillMaxWidth()
@@ -780,39 +752,100 @@ private fun TaskSearchField(
 }
 
 @Composable
+private fun ProcessSearchRow(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onClear: () -> Unit,
+    onStart: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TaskSearchField(
+            value = value,
+            onValueChange = onValueChange,
+            onClear = onClear,
+            modifier = Modifier.weight(1f),
+        )
+        FilledIconButton(
+            onClick = onStart,
+            modifier = Modifier.size(50.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ),
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Start a program")
+        }
+    }
+}
+
+@Composable
+private fun ManageProcessesCard(count: Int?, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(18.dp)
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, TaskPalette.border, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconBadge(Icons.Default.Layers, TaskPalette.blue, 40.dp)
+        Spacer(Modifier.width(13.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "Manage processes",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TaskPalette.text,
+            )
+            Text(
+                count?.let { "$it running · inspect or end a task" } ?: "View, inspect, or end running tasks",
+                fontSize = 12.sp,
+                color = TaskPalette.muted,
+            )
+        }
+        Icon(
+            Icons.AutoMirrored.Filled.ArrowBack,
+            contentDescription = null,
+            tint = TaskPalette.muted,
+            modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = 180f },
+        )
+    }
+}
+
+@Composable
 private fun TaskFilterRow(
     filter: TaskFilter,
     sort: TaskSort,
     onFilter: (TaskFilter) -> Unit,
     onSort: (TaskSort) -> Unit,
-    onStart: () -> Unit,
 ) {
-    val scroll = rememberScrollState()
-    LaunchedEffect(Unit) { scroll.scrollTo(0) }
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(scroll),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TaskFilter.entries.forEach { option ->
-            GlassChip(
-                selected = filter == option,
-                icon = when (option) {
-                    TaskFilter.ALL -> Icons.Default.GridView
-                    TaskFilter.APPS -> Icons.Default.Widgets
-                    TaskFilter.BACKGROUND -> Icons.Default.Layers
-                },
-                label = option.label,
-                onClick = { onFilter(option) },
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                TextButton(onClick = { onFilter(option) }) {
+                    Text(
+                        option.label,
+                        color = if (filter == option) TaskPalette.blue else TaskPalette.muted,
+                        fontWeight = if (filter == option) FontWeight.SemiBold else FontWeight.Normal,
+                    )
+                }
+                Box(
+                    Modifier.width(28.dp).height(2.dp)
+                        .background(if (filter == option) TaskPalette.blue else Color.Transparent),
+                )
+            }
         }
+        Spacer(Modifier.weight(1f))
         SortMenu(sort, onSort)
-        GlassChip(
-            selected = false,
-            icon = Icons.Default.Add,
-            label = "Start",
-            onClick = onStart,
-        )
     }
 }
 
@@ -820,12 +853,9 @@ private fun TaskFilterRow(
 private fun SortMenu(current: TaskSort, onSelect: (TaskSort) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        GlassChip(
-            selected = true,
-            icon = Icons.Default.BarChart,
-            label = current.label,
-            onClick = { open = true },
-        )
+        TextButton(onClick = { open = true }) {
+            Text("Sort: ${current.label}", color = TaskPalette.blue, maxLines = 1)
+        }
         DropdownMenu(
             expanded = open,
             onDismissRequest = { open = false },
@@ -975,16 +1005,18 @@ private fun TaskRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    MetricPill(Icons.Default.Memory, formatBytes(task.workingSetBytes), TaskPalette.purple)
-                    if (task.connectionCount > 0) {
-                        MetricPill(Icons.Default.Language, "${task.connectionCount} conn", TaskPalette.green)
-                    }
-                    if (abs(disk) >= 1024) {
-                        MetricPill(Icons.Default.Storage, "${formatBytes(disk)}/s", TaskPalette.blue)
-                    }
-                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    buildString {
+                        append("Memory  ${formatBytes(task.workingSetBytes)}")
+                        if (abs(disk) >= 1024) append("    Disk  ${formatBytes(disk)}/s")
+                        if (task.connectionCount > 0) append("    Network  ${task.connectionCount} sockets")
+                    },
+                    fontSize = 11.sp,
+                    color = TaskPalette.muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.End) {
@@ -994,34 +1026,9 @@ private fun TaskRow(
                     fontWeight = FontWeight.Bold,
                     color = if (task.cpuPercent >= 20) TaskPalette.blue else TaskPalette.text,
                 )
-                Icon(
-                    Icons.Default.KeyboardArrowDown,
-                    null,
-                    tint = TaskPalette.faint,
-                    modifier = Modifier.size(17.dp),
-                )
+                Text("CPU", fontSize = 10.sp, color = TaskPalette.faint)
             }
         }
-    }
-}
-
-@Composable
-private fun MetricPill(icon: ImageVector, text: String, tint: Color) {
-    Row(
-        Modifier.clip(RoundedCornerShape(8.dp))
-            .background(tint.copy(alpha = 0.10f))
-            .border(1.dp, tint.copy(alpha = 0.20f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 6.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, null, tint = tint, modifier = Modifier.size(11.dp))
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text,
-            fontSize = 9.5.sp,
-            color = TaskPalette.text,
-            maxLines = 1,
-        )
     }
 }
 
@@ -1051,8 +1058,8 @@ private fun TaskDetailDialog(
                     .heightIn(max = screenHeight * 0.96f)
                     .fillMaxHeight()
                     .clip(shape)
-                    .background(taskGlassBrush())
-                    .border(1.dp, TaskPalette.blue.copy(alpha = 0.28f), shape),
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, TaskPalette.border, shape),
             ) {
                 Column(Modifier.fillMaxSize().padding(horizontal = 18.dp, vertical = 16.dp)) {
                     Row(verticalAlignment = Alignment.Top) {
@@ -1090,23 +1097,24 @@ private fun TaskDetailDialog(
 
                     Spacer(Modifier.height(11.dp))
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        StatusChip(
-                            color = if (running) TaskPalette.green else TaskPalette.red,
-                            icon = null,
-                            label = if (running) "Running" else "Ended",
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(8.dp).clip(CircleShape)
+                                .background(if (running) TaskPalette.green else TaskPalette.red),
                         )
-                        StatusChip(
-                            color = TaskPalette.blue,
-                            icon = Icons.Default.Bolt,
-                            label = String.format(Locale.US, "%.1f%% CPU", task.cpuPercent),
+                        Spacer(Modifier.width(7.dp))
+                        Text(if (running) "Running" else "Ended", fontSize = 12.sp, color = TaskPalette.muted)
+                        Spacer(Modifier.width(14.dp))
+                        Text(
+                            "${String.format(Locale.US, "%.1f%%", task.cpuPercent)} CPU",
+                            fontSize = 12.sp,
+                            color = TaskPalette.muted,
                         )
                         if (task.elevated == true) {
-                            StatusChip(
-                                color = TaskPalette.purple,
-                                icon = Icons.Default.Shield,
-                                label = "Admin",
-                            )
+                            Spacer(Modifier.width(14.dp))
+                            Icon(Icons.Default.Shield, null, tint = TaskPalette.muted, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Admin", fontSize = 12.sp, color = TaskPalette.muted)
                         }
                     }
 
@@ -1284,12 +1292,8 @@ private fun DetailMetricCard(
     Column(
         modifier.height(126.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(
-                Brush.linearGradient(
-                    listOf(tint.copy(alpha = 0.16f), tint.copy(alpha = 0.03f)),
-                ),
-            )
-            .border(1.dp, tint.copy(alpha = 0.25f), RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, TaskPalette.border, RoundedCornerShape(16.dp))
             .padding(horizontal = 11.dp, vertical = 10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1308,12 +1312,12 @@ private fun DetailMetricCard(
         )
         Text(
             caption,
-            fontSize = 9.sp,
-            lineHeight = 12.sp,
+            fontSize = 11.sp,
+            lineHeight = 13.sp,
             color = TaskPalette.faint,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.height(24.dp),
+            modifier = Modifier.height(28.dp),
         )
         Spacer(Modifier.weight(1f))
         Sparkline(values, tint, Modifier.fillMaxWidth().height(28.dp))
@@ -1404,27 +1408,8 @@ private fun DetailNote(icon: ImageVector, tint: Color, title: String, body: Stri
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = TaskPalette.text)
-            Text(body, fontSize = 10.5.sp, lineHeight = 15.sp, color = TaskPalette.muted)
+            Text(body, fontSize = 11.sp, lineHeight = 15.sp, color = TaskPalette.muted)
         }
-    }
-}
-
-@Composable
-private fun StatusChip(color: Color, icon: ImageVector?, label: String) {
-    Row(
-        Modifier.clip(RoundedCornerShape(20.dp))
-            .background(color.copy(alpha = 0.13f))
-            .border(1.dp, color.copy(alpha = 0.32f), RoundedCornerShape(20.dp))
-            .padding(horizontal = 11.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (icon != null) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(14.dp))
-        } else {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(color))
-        }
-        Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = color)
     }
 }
 
@@ -1518,8 +1503,8 @@ private fun StartTaskDialog(
                     .widthIn(max = 560.dp)
                     .heightIn(max = screenHeight * 0.9f)
                     .clip(shape)
-                    .background(taskGlassBrush())
-                    .border(1.dp, TaskPalette.blue.copy(alpha = 0.28f), shape),
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, TaskPalette.border, shape),
             ) {
                 Column(
                     Modifier.verticalScroll(rememberScrollState()).padding(18.dp),
@@ -1635,11 +1620,7 @@ private fun PrimaryButton(
         modifier.height(50.dp)
             .clip(shape)
             .background(
-                if (enabled) {
-                    Brush.horizontalGradient(listOf(TaskPalette.blueDeep, Color(0xFF57B8FF)))
-                } else {
-                    SolidColor(MaterialTheme.colorScheme.surfaceVariant)
-                },
+                SolidColor(if (enabled) TaskPalette.blueDeep else MaterialTheme.colorScheme.surfaceVariant),
             )
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -1698,65 +1679,6 @@ private fun SecondaryButton(
 }
 
 @Composable
-private fun GlassChip(
-    selected: Boolean,
-    icon: ImageVector,
-    label: String,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(21.dp)
-    Row(
-        Modifier.clip(shape)
-            .background(
-                if (selected) {
-                Brush.horizontalGradient(listOf(TaskPalette.blueDeep, TaskPalette.blue))
-                } else {
-                    SolidColor(TaskPalette.chip)
-                },
-            )
-            .border(
-                1.dp,
-                if (selected) Color.Transparent else TaskPalette.border,
-                shape,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 13.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            icon,
-            null,
-            tint = if (selected) MaterialTheme.colorScheme.onPrimary else TaskPalette.blue,
-            modifier = Modifier.size(15.dp),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            label,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = if (selected) MaterialTheme.colorScheme.onPrimary else TaskPalette.text,
-        )
-    }
-}
-
-@Composable
-private fun GlassPill(
-    onClick: () -> Unit,
-    borderColor: Color,
-    content: @Composable RowScope.() -> Unit,
-) {
-    Row(
-        Modifier.clip(RoundedCornerShape(18.dp))
-            .background(TaskPalette.chip)
-            .border(1.dp, borderColor, RoundedCornerShape(18.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content,
-    )
-}
-
-@Composable
 private fun CircleGlassButton(
     onClick: () -> Unit,
     size: Dp = 42.dp,
@@ -1795,7 +1717,7 @@ private fun TaskAppIcon(icon: ImageBitmap?, name: String, size: Dp, radius: Dp) 
     Box(
         Modifier.size(size)
             .clip(shape)
-            .background(Brush.linearGradient(listOf(TaskPalette.chip, TaskPalette.cardDeep)))
+            .background(TaskPalette.cardDeep)
             .border(1.dp, TaskPalette.border, shape),
         contentAlignment = Alignment.Center,
     ) {
@@ -1824,7 +1746,7 @@ private fun GlassSurface(
 ) {
     Box(
         modifier.clip(shape)
-            .background(taskGlassBrush())
+            .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, TaskPalette.border, shape),
         content = content,
     )

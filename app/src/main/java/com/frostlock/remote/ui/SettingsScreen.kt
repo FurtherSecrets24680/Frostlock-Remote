@@ -62,6 +62,8 @@ fun SettingsScreen(
     pcs: List<PcProfile>,
     onThemeChange: (ThemeMode) -> Unit,
     onHapticsChange: (Boolean) -> Unit,
+    onDeviceAuthenticationChange: (Boolean) -> Unit,
+    deviceAuthenticationAvailable: Boolean,
     onRemovePc: (PcProfile) -> Unit,
     onReset: () -> Unit,
     onBack: () -> Unit,
@@ -74,7 +76,7 @@ fun SettingsScreen(
         LazyColumn(
             Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 40.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item {
                 SettingsHeader(onBack = onBack)
@@ -99,6 +101,23 @@ fun SettingsScreen(
                         description = "A short vibration after the PC confirms a freeze or release.",
                         checked = preferences.haptics,
                         onCheckedChange = onHapticsChange,
+                    )
+                }
+            }
+
+            item {
+                SectionLabel("Security")
+                SettingsCard {
+                    SettingSwitch(
+                        title = "Require device authentication",
+                        description = if (deviceAuthenticationAvailable) {
+                            "Ask for your fingerprint, PIN, pattern, or password when you reopen FrostLock Remote."
+                        } else {
+                            "Set up a fingerprint or screen lock on this phone to enable app protection."
+                        },
+                        checked = preferences.requireDeviceAuthentication,
+                        onCheckedChange = onDeviceAuthenticationChange,
+                        enabled = deviceAuthenticationAvailable || preferences.requireDeviceAuthentication,
                     )
                 }
             }
@@ -173,7 +192,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { confirmReset = false },
             title = { Text("Reset settings?") },
-            text = { Text("Theme and haptics return to their defaults. Paired PCs are kept.") },
+            text = { Text("Theme, haptics, and app authentication return to their defaults. Paired PCs are kept.") },
             confirmButton = {
                 TextButton(onClick = { confirmReset = false; onReset() }) { Text("Reset", color = colors.error) }
             },
@@ -204,6 +223,9 @@ private fun ThemeDropdown(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.fillMaxWidth(),
+            containerColor = colors.surface,
+            tonalElevation = 0.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant),
         ) {
             ThemeMode.entries.forEach { mode ->
                 DropdownMenuItem(
@@ -239,10 +261,9 @@ private fun SettingsHeader(onBack: () -> Unit) {
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text.uppercase(),
-        fontSize = 11.sp,
-        letterSpacing = 1.5.sp,
-        fontWeight = FontWeight.Bold,
+        text,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(start = 4.dp),
     )
@@ -252,7 +273,7 @@ private fun SectionLabel(text: String) {
 private fun SettingsCard(content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -269,6 +290,7 @@ private fun SettingSwitch(
     description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     val colors = MaterialTheme.colorScheme
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 6.dp)) {
@@ -277,7 +299,7 @@ private fun SettingSwitch(
             Text(description, color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 

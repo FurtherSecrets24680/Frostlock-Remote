@@ -25,6 +25,12 @@
         </activity>
 
         <activity
+            android:name=".security.AppAuthenticationActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.FrostLock.AppLock" />
+
+        <activity
             android:name=".widget.WidgetConfigureActivity"
             android:excludeFromRecents="true"
             android:exported="true"

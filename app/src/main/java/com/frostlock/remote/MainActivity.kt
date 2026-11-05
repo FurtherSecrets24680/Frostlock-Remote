@@ -3,8 +3,10 @@ package com.frostlock.remote
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings as AndroidSettings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -75,6 +77,8 @@ import androidx.lifecycle.lifecycleScope
 import com.frostlock.remote.control.ConfirmUnlockActivity
 import com.frostlock.remote.control.ControlStore
 import com.frostlock.remote.control.RemoteControl
+import com.frostlock.remote.security.AppAuthenticationActivity
+import com.frostlock.remote.security.AppAuthenticationGate
 import com.frostlock.remote.data.*
 import com.frostlock.remote.ui.FrostTheme
 import com.frostlock.remote.ui.PcLockSettingsScreen
@@ -157,9 +161,64 @@ private fun RemoteApp(
     var prefs by remember { mutableStateOf(initialPreferences) }
     LaunchedEffect(initialPreferences) { prefs = initialPreferences }
 
+    var appAuthenticated by remember { mutableStateOf(!prefs.requireDeviceAuthentication) }
+    var authActivityInFlight by remember { mutableStateOf(false) }
+    var authAttemptedThisForeground by remember { mutableStateOf(false) }
+    var foregroundCycle by remember { mutableIntStateOf(0) }
+    var authUnavailable by remember { mutableStateOf(false) }
+    val deviceAuthenticationAvailable = remember(context) {
+        AppAuthenticationActivity.canAuthenticate(context)
+    }
+    val appAuthenticationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        authActivityInFlight = false
+        appAuthenticated = result.resultCode == Activity.RESULT_OK
+        authUnavailable = result.data?.getBooleanExtra(
+            AppAuthenticationActivity.EXTRA_AUTH_UNAVAILABLE,
+            false,
+        ) == true
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    fun requestAppAuthentication() {
+        if (authActivityInFlight) return
+        authActivityInFlight = true
+        authAttemptedThisForeground = true
+        appAuthenticationLauncher.launch(AppAuthenticationActivity.intent(context, prefs.theme))
+    }
+
+    DisposableEffect(lifecycleOwner, prefs.requireDeviceAuthentication) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (!prefs.requireDeviceAuthentication) return@LifecycleEventObserver
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_STOP -> if (!authActivityInFlight) {
+                    appAuthenticated = false
+                    authAttemptedThisForeground = false
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_START -> if (!authActivityInFlight) {
+                    foregroundCycle++
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(prefs.requireDeviceAuthentication, foregroundCycle) {
+        if (!prefs.requireDeviceAuthentication) {
+            appAuthenticated = true
+            authUnavailable = false
+        } else if (!appAuthenticated && !authActivityInFlight && !authAttemptedThisForeground) {
+            requestAppAuthentication()
+        }
+    }
+
     fun applyPreferences(transform: (AppPreferences) -> AppPreferences) {
         val next = transform(prefs)
         prefs = next
+        if (!next.requireDeviceAuthentication) appAuthenticated = true
         scope.launch { withContext(Dispatchers.IO) { preferences.save(next) } }
     }
 
@@ -274,6 +333,28 @@ private fun RemoteApp(
         toast = null
     }
 
+    BackHandler(enabled = prefs.requireDeviceAuthentication && !appAuthenticated) { }
+
+    if (prefs.requireDeviceAuthentication && !appAuthenticated) {
+        AppAuthenticationGate(
+            unavailable = authUnavailable,
+            onRetry = {
+                authUnavailable = false
+                authAttemptedThisForeground = false
+                requestAppAuthentication()
+            },
+            onOpenDeviceSettings = {
+                runCatching { context.startActivity(Intent(AndroidSettings.ACTION_SECURITY_SETTINGS)) }
+                    .onFailure { authUnavailable = true }
+            },
+            onDisableAppLock = {
+                applyPreferences { it.copy(requireDeviceAuthentication = false) }
+                authUnavailable = false
+            },
+        )
+        return
+    }
+
     Box(Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = screen,
@@ -327,6 +408,16 @@ private fun RemoteApp(
             pcs = pcs.map { it.profile },
             onThemeChange = { mode -> applyPreferences { it.copy(theme = mode) } },
             onHapticsChange = { enabled -> applyPreferences { it.copy(haptics = enabled) } },
+            onDeviceAuthenticationChange = { required ->
+                if (!required || deviceAuthenticationAvailable) {
+                    applyPreferences { it.copy(requireDeviceAuthentication = required) }
+                    if (required) {
+                        appAuthenticated = true
+                        authUnavailable = false
+                    }
+                }
+            },
+            deviceAuthenticationAvailable = deviceAuthenticationAvailable,
             onRemovePc = ::removePc,
             onReset = { applyPreferences { AppPreferences() } },
             onBack = { screen = Screen.HOME; toast = null },
@@ -493,10 +584,9 @@ private fun RemoteApp(
 private fun DetailLine(label: String, value: String) {
     Column {
         Text(
-            label.uppercase(),
-            fontSize = 10.sp,
-            letterSpacing = 1.2.sp,
-            fontWeight = FontWeight.Bold,
+            label,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
@@ -538,6 +628,9 @@ private fun FreezeOptionDropdown(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
                 modifier = Modifier.widthIn(min = 200.dp, max = 300.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             ) {
                 options.forEach { option ->
                     DropdownMenuItem(
@@ -615,13 +708,13 @@ private fun EmptyState(onPair: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Surface(
         color = colors.surface,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, colors.outlineVariant),
         modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
     ) {
         Column(Modifier.padding(horizontal = 22.dp, vertical = 28.dp), horizontalAlignment = Alignment.Start) {
             Spacer(Modifier.height(2.dp))
-            Text("DIRECT LOCAL CONNECTION", fontSize = 10.sp, letterSpacing = 1.25.sp, color = colors.primary, fontWeight = FontWeight.Bold)
+            Text("Private network connection", fontSize = 12.sp, color = colors.onSurfaceVariant, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(7.dp))
             Text("Nothing paired yet", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = colors.onSurface)
             Spacer(Modifier.height(8.dp))
@@ -644,7 +737,7 @@ private fun PcCard(
 ) {
     val colors = MaterialTheme.colorScheme
     var menu by remember { mutableStateOf(false) }
-    Surface(color = colors.surface, shape = RoundedCornerShape(22.dp), modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+    Surface(color = colors.surface, shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Column(Modifier.padding(18.dp).animateContentSize(animationSpec = tween(220))) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -675,7 +768,13 @@ private fun PcCard(
                     IconButton(onClick = { menu = true }) {
                         Icon(Icons.Default.MoreVert, "More options for ${pc.profile.name}", tint = colors.onSurfaceVariant)
                     }
-                    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    DropdownMenu(
+                        expanded = menu,
+                        onDismissRequest = { menu = false },
+                        containerColor = colors.surface,
+                        tonalElevation = 0.dp,
+                        border = BorderStroke(1.dp, colors.outlineVariant),
+                    ) {
                         DropdownMenuItem(text = { Text("Connection details") }, onClick = { menu = false; onDetails() })
                         DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
                         DropdownMenuItem(text = { Text("Remove from this phone") }, onClick = { menu = false; onRemove() })
@@ -800,8 +899,8 @@ private fun PcControlScreen(
                     else -> colors.onPrimary
                 },
                 border = BorderStroke(1.dp, if (active) colors.error.copy(alpha = 0.4f) else colors.outlineVariant),
-                shadowElevation = if (allowed && !busy) 10.dp else 0.dp,
-                modifier = Modifier.size(224.dp).semantics {
+                shadowElevation = if (allowed && !busy) 4.dp else 0.dp,
+                modifier = Modifier.size(208.dp).semantics {
                     contentDescription = if (active) "Unlock ${pc.profile.name}" else "Freeze ${pc.profile.name}"
                 },
             ) {
@@ -809,7 +908,7 @@ private fun PcControlScreen(
                     if (busy) CircularProgressIndicator(Modifier.size(48.dp), strokeWidth = 3.dp, color = LocalContentColor.current)
                     else Icon(if (active) Icons.Default.LockOpen else Icons.Default.Lock, null, modifier = Modifier.size(58.dp))
                     Spacer(Modifier.height(12.dp))
-                    Text(if (active) "UNLOCK" else "FREEZE", fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp, fontSize = 16.sp)
+                    Text(if (active) "Unlock" else "Freeze", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     if (!active && lockOptions != null) {
                         Spacer(Modifier.height(4.dp))
                         Text("${lockOptions.mode} · $durationLabel", fontSize = 12.sp)
@@ -910,8 +1009,8 @@ private fun PairScreen(
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = colors.onBackground)
                 }
             }
-            Text("PAIR A PC", color = colors.primary, fontSize = 11.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 22.dp))
-            Text("Connect to FrostLock", color = colors.onBackground, fontSize = 27.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 5.dp))
+            Text("Pair a PC", color = colors.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 22.dp))
+            Text("Connect to FrostLock", color = colors.onBackground, fontSize = 25.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 5.dp))
             Text("Scan the encrypted code from your Windows PC, or paste it below.", color = colors.onSurfaceVariant, fontSize = 14.sp, lineHeight = 21.sp, modifier = Modifier.padding(top = 8.dp, bottom = 16.dp))
             Surface(
                 color = colors.surfaceVariant,

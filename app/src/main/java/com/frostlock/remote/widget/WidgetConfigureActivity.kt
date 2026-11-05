@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,9 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.frostlock.remote.MainActivity
+import com.frostlock.remote.data.AppPreferences
 import com.frostlock.remote.data.PcProfile
+import com.frostlock.remote.data.PreferencesStore
 import com.frostlock.remote.data.ProfileStore
-import com.frostlock.remote.data.ThemeMode
 import com.frostlock.remote.ui.FrostTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -69,8 +71,10 @@ class WidgetConfigureActivity : ComponentActivity() {
         setResult(RESULT_CANCELED)
 
         val profiles = ProfileStore(this)
+        val preferences = PreferencesStore(this)
         setContent {
-            FrostTheme(ThemeMode.SYSTEM) {
+            val currentPreferences by preferences.flow.collectAsState(initial = AppPreferences())
+            FrostTheme(currentPreferences.theme) {
                 var available by remember { mutableStateOf<List<PcProfile>?>(null) }
                 LaunchedEffect(Unit) {
                     available = withContext(Dispatchers.IO) {
@@ -111,16 +115,15 @@ private fun ConfigureScreen(
     Scaffold(containerColor = colors.background) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp, vertical = 16.dp)) {
             Text(
-                "WIDGET SETUP",
-                color = colors.primary,
-                fontSize = 11.sp,
-                letterSpacing = 1.7.sp,
-                fontWeight = FontWeight.Bold,
+                "Widget setup",
+                color = colors.onSurfaceVariant,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
             )
             Text(
                 "Choose a PC",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = colors.onBackground,
                 modifier = Modifier.padding(top = 5.dp),
             )

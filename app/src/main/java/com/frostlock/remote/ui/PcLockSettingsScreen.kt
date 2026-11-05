@@ -78,8 +78,8 @@ fun PcLockSettingsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                     Column {
-                        Text("LOCK CONTROLS", color = colors.primary, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-                        Text(pcName, color = colors.onBackground, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                        Text("Lock controls", color = colors.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        Text(pcName, color = colors.onBackground, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
                 Text("These settings are saved on the PC and apply to the next freeze.", color = colors.onSurfaceVariant, fontSize = 14.sp, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
@@ -159,8 +159,8 @@ fun PcLockSettingsScreen(
 @Composable
 private fun Section(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(title.uppercase(), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp))
-        Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+        Text(title, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 4.dp))
+        Surface(color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
             Column(
                 Modifier.padding(16.dp).animateContentSize(animationSpec = tween(220)),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -183,7 +183,13 @@ private fun Selection(title: String, selected: String, choices: List<String>, on
                     label = "setting choice label",
                 ) { label -> Text(label) }
             }
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 0.dp,
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
                 choices.forEach { choice ->
                     DropdownMenuItem(text = { Text(choice) }, onClick = { expanded = false; onSelect(choice) })
                 }

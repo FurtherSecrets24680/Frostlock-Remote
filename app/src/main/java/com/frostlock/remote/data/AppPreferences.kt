@@ -23,6 +23,7 @@ enum class ThemeMode(val label: String) {
 data class AppPreferences(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val haptics: Boolean = true,
+    val requireDeviceAuthentication: Boolean = false,
 )
 
 private val Context.settingsDataStore by preferencesDataStore(name = "app_settings")
@@ -30,11 +31,13 @@ private val Context.settingsDataStore by preferencesDataStore(name = "app_settin
 class PreferencesStore(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme")
     private val hapticsKey = booleanPreferencesKey("haptics")
+    private val deviceAuthenticationKey = booleanPreferencesKey("require_device_authentication")
 
     val flow: Flow<AppPreferences> = context.settingsDataStore.data.map { prefs ->
         AppPreferences(
             theme = ThemeMode.from(prefs[themeKey]),
             haptics = prefs[hapticsKey] ?: true,
+            requireDeviceAuthentication = prefs[deviceAuthenticationKey] ?: false,
         )
     }
 
@@ -42,6 +45,7 @@ class PreferencesStore(private val context: Context) {
         context.settingsDataStore.edit { prefs ->
             prefs[themeKey] = preferences.theme.name
             prefs[hapticsKey] = preferences.haptics
+            prefs[deviceAuthenticationKey] = preferences.requireDeviceAuthentication
         }
     }
 }

@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <style name="Theme.FrostLock.AppLock" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorAccent">#147DAB</item>
+    </style>
+
     <!-- Used by the shared unlock confirmation screen, which is a translucent
          window hosting the system biometric prompt. The parent must be an
          AppCompat theme: on API 26-28 the biometric fallback renders its

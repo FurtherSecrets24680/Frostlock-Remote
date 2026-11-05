@@ -14,6 +14,7 @@
     <string name="tile_unlock">Unlock PC</string>
 
     <string name="confirm_unlock_title">Confirm unlock</string>
+    <string name="app_auth_title">Unlock FrostLock Remote</string>
     <string name="confirm_unlock_waiting">Waiting for your phone to confirm it is you.</string>
 
     <string name="freeze_channel_name">Freeze status</string>

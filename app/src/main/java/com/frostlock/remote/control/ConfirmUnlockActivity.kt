@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,8 +35,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import com.frostlock.remote.data.PcProfile
 import com.frostlock.remote.data.ProfileStore
+import com.frostlock.remote.data.AppPreferences
+import com.frostlock.remote.data.PreferencesStore
 import com.frostlock.remote.security.UnlockAuth
 import com.frostlock.remote.security.chooseAuthenticatorsFor
+import com.frostlock.remote.ui.FrostTheme
 import com.frostlock.remote.widget.FrostLockWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -66,7 +71,11 @@ class ConfirmUnlockActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
         }
-        setContent { UnlockBackdrop() }
+        val preferences = PreferencesStore(this)
+        setContent {
+            val current by preferences.flow.collectAsState(initial = AppPreferences())
+            FrostTheme(current.theme) { UnlockBackdrop() }
+        }
         loadProfile()
     }
 
@@ -239,14 +248,16 @@ class ConfirmUnlockActivity : AppCompatActivity() {
 
 @Composable
 private fun UnlockBackdrop() {
+    val colors = androidx.compose.material3.MaterialTheme.colorScheme
     Box(
-        Modifier.fillMaxSize().background(Color(0x66000000)),
+        Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.38f)),
         contentAlignment = Alignment.Center,
     ) {
         Surface(
-            color = Color(0xFF101E2E),
-            contentColor = Color.White,
-            shape = RoundedCornerShape(20.dp),
+            color = colors.surface,
+            contentColor = colors.onSurface,
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant),
             modifier = Modifier.padding(28.dp),
         ) {
             Column(
@@ -254,23 +265,22 @@ private fun UnlockBackdrop() {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
-                    "FROSTLOCK",
-                    color = Color(0xFF7FD0EF),
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp,
+                    "FrostLock",
+                    color = colors.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
                     "Confirm unlock",
-                    color = Color.White,
+                    color = colors.onSurface,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
                     "Waiting for your phone to confirm it is you.",
-                    color = Color(0xFFB6C6D2),
+                    color = colors.onSurfaceVariant,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center,
                 )

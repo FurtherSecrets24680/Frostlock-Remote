@@ -22,6 +22,7 @@ class AppPreferencesTest {
         val defaults = AppPreferences()
         assertEquals(ThemeMode.SYSTEM, defaults.theme)
         assertEquals(true, defaults.haptics)
+        assertEquals(false, defaults.requireDeviceAuthentication)
     }
 
     @Test

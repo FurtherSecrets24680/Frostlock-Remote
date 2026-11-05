@@ -16,10 +16,10 @@ data class WidgetState(
 ) {
     val buttonLabel: String
         get() = when {
-            !configured -> "SET UP"
-            busy -> "WORKING"
-            active -> "UNLOCK"
-            else -> "FREEZE"
+            !configured -> "Set up"
+            busy -> "Working"
+            active -> "Unlock"
+            else -> "Freeze"
         }
 
     val statusLine: String

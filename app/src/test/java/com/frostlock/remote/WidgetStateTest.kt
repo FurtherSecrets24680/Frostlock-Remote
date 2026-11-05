@@ -9,28 +9,28 @@ class WidgetStateTest {
     @Test
     fun unconfiguredWidgetAsksForSetup() {
         val state = WidgetState()
-        assertEquals("SET UP", state.buttonLabel)
+        assertEquals("Set up", state.buttonLabel)
         assertEquals("Tap to choose a PC", state.statusLine)
     }
 
     @Test
     fun activeFreezeShowsUnlock() {
         val state = WidgetState(configured = true, active = true, mode = "Strict", remainingSeconds = 600)
-        assertEquals("UNLOCK", state.buttonLabel)
+        assertEquals("Unlock", state.buttonLabel)
         assertEquals("Strict · 10 min left", state.statusLine)
     }
 
     @Test
     fun busyWinsOverEverything() {
         val state = WidgetState(configured = true, active = true, busy = true)
-        assertEquals("WORKING", state.buttonLabel)
+        assertEquals("Working", state.buttonLabel)
         assertEquals("Talking to your PC…", state.statusLine)
     }
 
     @Test
     fun errorReplacesTheStatusLine() {
         val state = WidgetState(configured = true, error = "PC unreachable")
-        assertEquals("FREEZE", state.buttonLabel)
+        assertEquals("Freeze", state.buttonLabel)
         assertEquals("PC unreachable", state.statusLine)
     }
 
@@ -61,7 +61,7 @@ class WidgetStateTest {
     @Test
     fun checkingStateIsNotMistakenForReady() {
         val state = WidgetState(configured = true, checking = true)
-        assertEquals("FREEZE", state.buttonLabel)
+        assertEquals("Freeze", state.buttonLabel)
         assertEquals("Checking your PC…", state.statusLine)
     }
 }

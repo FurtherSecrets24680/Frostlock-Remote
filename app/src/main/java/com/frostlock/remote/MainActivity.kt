@@ -34,8 +34,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Memory
@@ -416,6 +419,9 @@ private fun RemoteApp(
             pcs = pcs.map { it.profile },
             onThemeChange = { mode -> applyPreferences { it.copy(theme = mode) } },
             onHapticsChange = { enabled -> applyPreferences { it.copy(haptics = enabled) } },
+            onTaskUnitsChange = { units -> applyPreferences { it.copy(taskUnits = units) } },
+            onTaskGroupingChange = { grouped -> applyPreferences { it.copy(taskGrouping = grouped) } },
+            onTaskRefreshChange = { refresh -> applyPreferences { it.copy(taskRefresh = refresh) } },
             onDeviceAuthenticationChange = { required ->
                 if (!required || deviceAuthenticationAvailable) {
                     applyPreferences { it.copy(requireDeviceAuthentication = required) }
@@ -439,6 +445,9 @@ private fun RemoteApp(
                 TaskManagerScreen(
                     api = api,
                     profile = pc.profile,
+                    taskUnits = prefs.taskUnits,
+                    groupProcesses = prefs.taskGrouping,
+                    refreshSeconds = prefs.taskRefresh.seconds,
                     onBack = { screen = if (connectionDetailsFromControl) Screen.CONTROL else Screen.HOME },
                     onToast = { toast = it },
                 )
@@ -802,9 +811,21 @@ private fun PcCard(
                         border = BorderStroke(1.dp, colors.outlineVariant),
                         shape = RoundedCornerShape(16.dp),
                     ) {
-                        DropdownMenuItem(text = { Text("Connection details") }, onClick = { menu = false; onDetails() })
-                        DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
-                        DropdownMenuItem(text = { Text("Remove from this phone") }, onClick = { menu = false; onRemove() })
+                        DropdownMenuItem(
+                            text = { Text("Connection details") },
+                            leadingIcon = { Icon(Icons.Default.Info, null, tint = colors.primary) },
+                            onClick = { menu = false; onDetails() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Rename") },
+                            leadingIcon = { Icon(Icons.Default.Edit, null, tint = colors.onSurfaceVariant) },
+                            onClick = { menu = false; onRename() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove from this phone") },
+                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = colors.error) },
+                            onClick = { menu = false; onRemove() },
+                        )
                     }
                 }
             }

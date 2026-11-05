@@ -1,13 +1,8 @@
 package com.frostlock.remote.ui
 
 import android.widget.ImageView
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,16 +19,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -47,14 +38,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.frostlock.remote.data.AppPreferences
 import com.frostlock.remote.data.PcProfile
+import com.frostlock.remote.data.TaskRefresh
+import com.frostlock.remote.data.TaskUnits
 import com.frostlock.remote.data.ThemeMode
 
 @Composable
@@ -66,6 +57,9 @@ fun SettingsScreen(
     onHapticsChange: (Boolean) -> Unit,
     onDeviceAuthenticationChange: (Boolean) -> Unit,
     deviceAuthenticationAvailable: Boolean,
+    onTaskUnitsChange: (TaskUnits) -> Unit,
+    onTaskGroupingChange: (Boolean) -> Unit,
+    onTaskRefreshChange: (TaskRefresh) -> Unit,
     onRemovePc: (PcProfile) -> Unit,
     onReset: () -> Unit,
     onBack: () -> Unit,
@@ -88,10 +82,14 @@ fun SettingsScreen(
             item {
                 SectionLabel("Appearance")
                 SettingsCard {
-                    Text("Theme", fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = colors.onSurface)
-                    Text("Follow the device setting or choose a theme.", color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp)
-                    Spacer(Modifier.height(8.dp))
-                    ThemeDropdown(selected = preferences.theme, onSelect = onThemeChange)
+                    CompactDropdown(
+                        title = "Theme",
+                        subtitle = "Follow the device setting or choose a theme.",
+                        selected = preferences.theme,
+                        options = ThemeMode.entries,
+                        labelFor = { it.label },
+                        onSelect = onThemeChange,
+                    )
                 }
             }
 
@@ -103,6 +101,38 @@ fun SettingsScreen(
                         description = "A short vibration after the PC confirms a freeze or release.",
                         checked = preferences.haptics,
                         onCheckedChange = onHapticsChange,
+                    )
+                }
+            }
+
+            item {
+                SectionLabel("Task manager")
+                SettingsCard {
+                    CompactDropdown(
+                        title = "Memory units",
+                        subtitle = "Applies to process memory, disk, and network sizes.",
+                        selected = preferences.taskUnits,
+                        options = TaskUnits.entries,
+                        labelFor = { it.label },
+                        onSelect = onTaskUnitsChange,
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    CompactDropdown(
+                        title = "Refresh interval",
+                        subtitle = "How often the process list updates while it is open.",
+                        selected = preferences.taskRefresh,
+                        options = TaskRefresh.entries,
+                        labelFor = { it.label },
+                        onSelect = onTaskRefreshChange,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    HorizontalDivider(color = colors.outlineVariant)
+                    Spacer(Modifier.height(6.dp))
+                    SettingSwitch(
+                        title = "Group matching processes",
+                        description = "Collapse processes with the same name into one row with combined totals.",
+                        checked = preferences.taskGrouping,
+                        onCheckedChange = onTaskGroupingChange,
                     )
                 }
             }
@@ -212,45 +242,6 @@ fun SettingsScreen(
             },
             dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
         )
-    }
-}
-
-@Composable
-private fun ThemeDropdown(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
-    val colors = MaterialTheme.colorScheme
-    var expanded by remember { mutableStateOf(false) }
-    androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth()) {
-        OutlinedButton(
-            onClick = { expanded = true },
-            modifier = Modifier.fillMaxWidth().height(48.dp).semantics { contentDescription = "Theme selection" },
-        ) {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                AnimatedContent(
-                    targetState = selected.label,
-                    transitionSpec = { (fadeIn(tween(140)) + androidx.compose.animation.slideInVertically(tween(160)) { it / 5 }) togetherWith fadeOut(tween(100)) },
-                    label = "theme selection label",
-                ) { label -> Text(label, color = colors.onSurface) }
-                Icon(Icons.Default.ExpandMore, contentDescription = null, tint = colors.onSurfaceVariant)
-            }
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.fillMaxWidth(),
-            containerColor = colors.surface,
-            tonalElevation = 0.dp,
-            border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant),
-            shape = RoundedCornerShape(16.dp),
-        ) {
-            ThemeMode.entries.forEach { mode ->
-                DropdownMenuItem(
-                    text = { Text(mode.label) },
-                    onClick = { expanded = false; onSelect(mode) },
-                    modifier = Modifier.semantics { contentDescription = "Theme option: ${mode.label}" },
-                    trailingIcon = if (mode == selected) ({ Icon(Icons.Default.Check, contentDescription = "Selected", tint = colors.primary) }) else null,
-                )
-            }
-        }
     }
 }
 

@@ -1,10 +1,6 @@
 package com.frostlock.remote.ui
 
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,16 +13,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -41,7 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.frostlock.remote.data.PcLockSettings
@@ -172,31 +163,13 @@ private fun Section(title: String, content: @Composable androidx.compose.foundat
 
 @Composable
 private fun Selection(title: String, selected: String, choices: List<String>, onSelect: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Column {
-        Text(title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
-        androidx.compose.foundation.layout.Box {
-            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
-                AnimatedContent(
-                    targetState = selected,
-                    transitionSpec = { (fadeIn(tween(140)) + androidx.compose.animation.slideInVertically(tween(160)) { it / 5 }) togetherWith fadeOut(tween(100)) },
-                    label = "setting choice label",
-                ) { label -> Text(label) }
-            }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 0.dp,
-                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                choices.forEach { choice ->
-                    DropdownMenuItem(text = { Text(choice) }, onClick = { expanded = false; onSelect(choice) })
-                }
-            }
-        }
-    }
+    CompactDropdown(
+        title = title,
+        selected = selected,
+        options = choices,
+        labelFor = { it },
+        onSelect = onSelect,
+    )
 }
 
 @Composable

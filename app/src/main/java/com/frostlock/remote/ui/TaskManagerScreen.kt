@@ -19,7 +19,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
@@ -27,16 +26,20 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
@@ -81,6 +84,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import com.frostlock.remote.data.FrostLockApi
 import com.frostlock.remote.data.PcProfile
+import com.frostlock.remote.data.TaskUnits
 import com.frostlock.remote.data.WindowsTask
 import com.frostlock.remote.data.WindowsTaskSnapshot
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +109,38 @@ private enum class TaskFilter(val label: String) {
     ALL("All"),
     APPS("Apps"),
     BACKGROUND("Background"),
+}
+
+/**
+ * One row in the process list. A group stands for every process that shares a display
+ * name, so the collapsed row can show combined totals instead of duplicate entries.
+ */
+private data class ProcessEntry(
+    val key: String,
+    val label: String,
+    val tasks: List<WindowsTask>,
+    val isGroup: Boolean,
+) {
+    val cpuPercent: Double get() = tasks.sumOf { it.cpuPercent }
+    val workingSetBytes: Long get() = tasks.sumOf { it.workingSetBytes }
+    val diskBytesPerSec: Double get() = tasks.sumOf { it.diskReadBytesPerSec + it.diskWriteBytesPerSec }
+    val connectionCount: Int get() = tasks.sumOf { it.connectionCount }
+
+    companion object {
+        fun single(task: WindowsTask) = ProcessEntry(
+            key = "pid-${task.pid}",
+            label = task.displayName,
+            tasks = listOf(task),
+            isGroup = false,
+        )
+
+        fun group(label: String, tasks: List<WindowsTask>) = ProcessEntry(
+            key = "group-${label.lowercase(Locale.getDefault())}",
+            label = label,
+            tasks = tasks,
+            isGroup = tasks.size > 1,
+        )
+    }
 }
 
 private object TaskPalette {
@@ -160,6 +196,9 @@ private data class SystemHistory(
 fun TaskManagerScreen(
     api: FrostLockApi,
     profile: PcProfile,
+    taskUnits: TaskUnits,
+    groupProcesses: Boolean,
+    refreshSeconds: Int,
     onBack: () -> Unit,
     onToast: (String) -> Unit,
 ) {
@@ -167,18 +206,20 @@ fun TaskManagerScreen(
     var snapshot by remember { mutableStateOf<WindowsTaskSnapshot?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var refreshing by remember { mutableStateOf(false) }
-    var autoRefresh by remember { mutableStateOf(true) }
+    var autoRefresh by remember { mutableStateOf(refreshSeconds > 0) }
     var processPage by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf(TaskSort.CPU) }
     var filter by remember { mutableStateOf(TaskFilter.ALL) }
     var selected by remember { mutableStateOf<WindowsTask?>(null) }
     var pendingKill by remember { mutableStateOf<WindowsTask?>(null) }
+    var pendingRestart by remember { mutableStateOf<WindowsTask?>(null) }
     var startOpen by remember { mutableStateOf(false) }
     var actionBusy by remember { mutableStateOf(false) }
     var systemHistory by remember { mutableStateOf(SystemHistory()) }
     val processHistory = remember { mutableStateMapOf<Int, MetricHistory>() }
     val icons = remember { mutableStateMapOf<String, ImageBitmap>() }
+    val expandedGroups = remember { mutableStateMapOf<String, Boolean>() }
 
     TaskSystemBars()
     BackHandler(enabled = processPage) { processPage = false }
@@ -212,11 +253,36 @@ fun TaskManagerScreen(
         }
     }
 
+    fun restartTask(task: WindowsTask) {
+        val path = task.path ?: return
+        if (actionBusy) return
+        actionBusy = true
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    api.endTask(profile, task.pid, force = false)
+                    api.startTask(profile, path)
+                }
+            }.onSuccess {
+                pendingRestart = null
+                selected = null
+                onToast("Restarted ${task.displayName} on ${profile.name}.")
+                loadSnapshot(false)
+            }.onFailure {
+                onToast(it.message ?: "FrostLock could not restart that task.")
+            }
+            actionBusy = false
+        }
+    }
+
     LaunchedEffect(profile.id) { loadSnapshot(true) }
-    LaunchedEffect(profile.id, autoRefresh) {
-        if (!autoRefresh) return@LaunchedEffect
+    LaunchedEffect(refreshSeconds) {
+        if (refreshSeconds > 0) autoRefresh = true
+    }
+    LaunchedEffect(profile.id, autoRefresh, refreshSeconds) {
+        if (!autoRefresh || refreshSeconds <= 0) return@LaunchedEffect
         while (true) {
-            delay(4000)
+            delay(refreshSeconds * 1000L)
             loadSnapshot(false)
         }
     }
@@ -248,9 +314,9 @@ fun TaskManagerScreen(
         loaded.forEach { (key, bitmap) -> icons[key] = bitmap }
     }
 
-    val processes = remember(snapshot, search, sort, filter) {
+    val entries = remember(snapshot, search, sort, filter, groupProcesses) {
         val query = search.trim()
-        snapshot?.processes.orEmpty()
+        val filtered = snapshot?.processes.orEmpty()
             .filter { task ->
                 when (filter) {
                     TaskFilter.ALL -> true
@@ -262,16 +328,27 @@ fun TaskManagerScreen(
                 query.isEmpty() || listOfNotNull(task.displayName, task.name, task.publisher, task.path)
                     .any { it.contains(query, ignoreCase = true) }
             }
-            .sortedWith(
-                when (sort) {
-                    TaskSort.CPU -> compareByDescending<WindowsTask> { it.cpuPercent }
-                        .thenByDescending { it.workingSetBytes }
-                    TaskSort.MEMORY -> compareByDescending<WindowsTask> { it.workingSetBytes }
-                    TaskSort.DISK -> compareByDescending { it.diskReadBytesPerSec + it.diskWriteBytesPerSec }
-                    TaskSort.NETWORK -> compareByDescending { it.connectionCount }
-                    TaskSort.NAME -> compareBy { it.displayName.lowercase(Locale.getDefault()) }
-                },
-            )
+
+        val grouped = if (groupProcesses) {
+            filtered.groupBy { it.displayName.trim().lowercase(Locale.getDefault()) }
+                .map { (_, tasks) ->
+                    if (tasks.size == 1) ProcessEntry.single(tasks.first())
+                    else ProcessEntry.group(tasks.first().displayName, tasks)
+                }
+        } else {
+            filtered.map(ProcessEntry::single)
+        }
+
+        grouped.sortedWith(
+            when (sort) {
+                TaskSort.CPU -> compareByDescending<ProcessEntry> { it.cpuPercent }
+                    .thenByDescending { it.workingSetBytes }
+                TaskSort.MEMORY -> compareByDescending { it.workingSetBytes }
+                TaskSort.DISK -> compareByDescending { it.diskBytesPerSec }
+                TaskSort.NETWORK -> compareByDescending { it.connectionCount }
+                TaskSort.NAME -> compareBy { it.label.lowercase(Locale.getDefault()) }
+            },
+        )
     }
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -297,6 +374,7 @@ fun TaskManagerScreen(
                                 MachineCard(
                                     snapshot = snapshot,
                                     history = systemHistory,
+                                    units = taskUnits,
                                     connected = snapshot != null && error == null,
                                     connecting = snapshot == null && error == null,
                                 )
@@ -337,9 +415,10 @@ fun TaskManagerScreen(
                         if (processPage) {
                             item(key = "count") {
                                 TaskCountRow(
-                                    count = processes.size,
+                                    count = entries.sumOf { it.tasks.size },
                                     snapshot = snapshot,
                                     autoRefresh = autoRefresh,
+                                    refreshSeconds = refreshSeconds,
                                 )
                             }
                         }
@@ -356,12 +435,52 @@ fun TaskManagerScreen(
                         }
 
                         if (processPage) {
-                            items(processes, key = { it.pid }) { task ->
-                                TaskRow(
-                                    task = task,
-                                    icon = task.iconKey?.let(icons::get),
-                                    onClick = { selected = task },
-                                )
+                            items(entries, key = { it.key }) { entry ->
+                                if (!entry.isGroup) {
+                                    val task = entry.tasks.first()
+                                    TaskRow(
+                                        task = task,
+                                        icon = task.iconKey?.let(icons::get),
+                                        units = taskUnits,
+                                        onClick = { selected = task },
+                                        restart = restartable(task),
+                                        onRestart = { pendingRestart = task },
+                                        onEnd = { pendingKill = task },
+                                        onCopy = { copied ->
+                                            onToast(if (copied) "Location copied." else "Nothing to copy.")
+                                        },
+                                    )
+                                } else {
+                                    val expanded = expandedGroups[entry.key] == true
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TaskGroupRow(
+                                            entry = entry,
+                                            icon = entry.tasks.firstNotNullOfOrNull { it.iconKey }?.let(icons::get),
+                                            units = taskUnits,
+                                            expanded = expanded,
+                                            onToggle = { expandedGroups[entry.key] = !expanded },
+                                            onClick = { selected = entry.tasks.first() },
+                                            onEndTop = { pendingKill = entry.tasks.first() },
+                                        )
+                                        if (expanded) {
+                                            entry.tasks.forEach { task ->
+                                                TaskRow(
+                                                    task = task,
+                                                    icon = task.iconKey?.let(icons::get),
+                                                    units = taskUnits,
+                                                    modifier = Modifier.padding(start = 14.dp),
+                                                    onClick = { selected = task },
+                                                    restart = restartable(task),
+                                                    onRestart = { pendingRestart = task },
+                                                    onEnd = { pendingKill = task },
+                                                    onCopy = { copied ->
+                                                        onToast(if (copied) "Location copied." else "Nothing to copy.")
+                                                    },
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -376,8 +495,13 @@ fun TaskManagerScreen(
                 task = live,
                 icon = live.iconKey?.let(icons::get),
                 history = processHistory[live.pid] ?: MetricHistory(),
+                units = taskUnits,
                 running = running,
                 onDismiss = { selected = null },
+                onRestart = {
+                    selected = null
+                    pendingRestart = live
+                },
                 onEnd = {
                     selected = null
                     pendingKill = live
@@ -397,22 +521,31 @@ fun TaskManagerScreen(
             )
         }
 
+        pendingRestart?.let { task ->
+            RestartTaskDialog(
+                task = task,
+                busy = actionBusy,
+                onDismiss = { if (!actionBusy) pendingRestart = null },
+                onRestart = { restartTask(task) },
+            )
+        }
+
         if (startOpen) {
-            StartTaskDialog(
+            RunCommandDialog(
                 profile = profile,
                 busy = actionBusy,
                 onDismiss = { if (!actionBusy) startOpen = false },
-                onStart = { path, arguments, directory ->
+                onRun = { command ->
                     actionBusy = true
                     scope.launch {
                         runCatching {
-                            withContext(Dispatchers.IO) { api.startTask(profile, path, arguments, directory) }
-                        }.onSuccess { started ->
+                            withContext(Dispatchers.IO) { api.runCommand(profile, command) }
+                        }.onSuccess {
                             startOpen = false
-                            onToast("Started ${started.name} (PID ${started.pid}) on ${profile.name}.")
+                            onToast("Sent the command to ${profile.name}.")
                             loadSnapshot(false)
                         }.onFailure {
-                            onToast(it.message ?: "FrostLock could not start that program on the PC.")
+                            onToast(it.message ?: "FrostLock could not run that command on the PC.")
                         }
                         actionBusy = false
                     }
@@ -518,6 +651,7 @@ private fun TaskTopBar(
 private fun MachineCard(
     snapshot: WindowsTaskSnapshot?,
     history: SystemHistory,
+    units: TaskUnits,
     connected: Boolean,
     connecting: Boolean,
 ) {
@@ -594,8 +728,8 @@ private fun MachineCard(
                     icon = Icons.Default.Memory,
                     tint = TaskPalette.purple,
                     label = "Memory",
-                    value = snapshot?.let { formatBytes(it.usedMemoryBytes) } ?: "—",
-                    caption = snapshot?.let { "of ${formatBytes(it.totalMemoryBytes)}" } ?: "physical RAM",
+                    value = snapshot?.let { formatBytes(it.usedMemoryBytes, units) } ?: "—",
+                    caption = snapshot?.let { "of ${formatBytes(it.totalMemoryBytes, units)}" } ?: "physical RAM",
                     values = history.memory,
                     modifier = Modifier.weight(1f),
                 )
@@ -616,10 +750,10 @@ private fun MachineCard(
                     tint = TaskPalette.orange,
                     label = "Network",
                     value = snapshot?.let {
-                        "${formatBytes(it.networkReceiveBytesPerSec + it.networkSendBytesPerSec)}/s"
+                        "${formatBytes(it.networkReceiveBytesPerSec + it.networkSendBytesPerSec, units)}/s"
                     } ?: "—",
                     caption = snapshot?.let {
-                        "↓ ${formatBytes(it.networkReceiveBytesPerSec)}/s  ↑ ${formatBytes(it.networkSendBytesPerSec)}/s"
+                        "↓ ${formatBytes(it.networkReceiveBytesPerSec, units)}/s  ↑ ${formatBytes(it.networkSendBytesPerSec, units)}/s"
                     } ?: "whole PC",
                     values = history.network,
                     modifier = Modifier.weight(1f),
@@ -777,7 +911,7 @@ private fun ProcessSearchRow(
                 contentColor = MaterialTheme.colorScheme.onPrimary,
             ),
         ) {
-            Icon(Icons.Default.Add, contentDescription = "Start a program")
+            Icon(Icons.Default.PlayArrow, contentDescription = "Run a command")
         }
     }
 }
@@ -888,7 +1022,7 @@ private fun SortMenu(current: TaskSort, onSelect: (TaskSort) -> Unit) {
 }
 
 @Composable
-private fun TaskCountRow(count: Int, snapshot: WindowsTaskSnapshot?, autoRefresh: Boolean) {
+private fun TaskCountRow(count: Int, snapshot: WindowsTaskSnapshot?, autoRefresh: Boolean, refreshSeconds: Int) {
     Row(
         Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -916,7 +1050,7 @@ private fun TaskCountRow(count: Int, snapshot: WindowsTaskSnapshot?, autoRefresh
             )
             Spacer(Modifier.width(5.dp))
             Text(
-                if (autoRefresh) "Updates every 4s" else "Live updates paused",
+                if (autoRefresh) "Updates every ${refreshSeconds}s" else "Live updates paused",
                 fontSize = 11.sp,
                 color = TaskPalette.faint,
             )
@@ -958,14 +1092,22 @@ private fun TaskErrorCard(message: String, onRetry: () -> Unit) {
 private fun TaskRow(
     task: WindowsTask,
     icon: ImageBitmap?,
+    units: TaskUnits,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    restart: Boolean,
+    onRestart: () -> Unit,
+    onEnd: () -> Unit,
+    onCopy: (Boolean) -> Unit,
 ) {
+    val clipboard = LocalClipboardManager.current
+    var menu by remember { mutableStateOf(false) }
     val disk = task.diskReadBytesPerSec + task.diskWriteBytesPerSec
     GlassSurface(
         shape = RoundedCornerShape(18.dp),
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(start = 12.dp, end = 4.dp, top = 11.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically) {
             TaskAppIcon(icon, task.displayName, 44.dp, 12.dp)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -1010,14 +1152,177 @@ private fun TaskRow(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     ProcessMetric(Icons.Default.Speed, TaskPalette.blue, "CPU", String.format(Locale.US, "%.1f%%", task.cpuPercent))
-                    ProcessMetric(Icons.Default.Memory, TaskPalette.purple, "Memory", formatBytes(task.workingSetBytes))
+                    ProcessMetric(Icons.Default.Memory, TaskPalette.purple, "Memory", formatBytes(task.workingSetBytes, units))
                     ProcessMetric(Icons.Default.Language, TaskPalette.orange, "Connections", task.connectionCount.toString())
-                    if (abs(disk) >= 1024) ProcessMetric(Icons.Default.Storage, TaskPalette.green, "Disk", "${formatBytes(disk)}/s")
+                    if (abs(disk) >= 1024) ProcessMetric(Icons.Default.Storage, TaskPalette.green, "Disk", "${formatBytes(disk, units)}/s")
                 }
             }
-            Spacer(Modifier.width(8.dp))
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        "Actions for ${task.displayName}",
+                        tint = TaskPalette.muted,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+                DropdownMenu(
+                    expanded = menu,
+                    onDismissRequest = { menu = false },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                    border = BorderStroke(1.dp, TaskPalette.border),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("View details") },
+                        leadingIcon = { Icon(Icons.Default.Info, null, tint = TaskPalette.blue) },
+                        onClick = { menu = false; onClick() },
+                    )
+                    if (restart) {
+                        DropdownMenuItem(
+                            text = { Text("Restart") },
+                            leadingIcon = { Icon(Icons.Default.RestartAlt, null, tint = TaskPalette.green) },
+                            onClick = { menu = false; onRestart() },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Copy location") },
+                        enabled = task.path != null,
+                        leadingIcon = { Icon(Icons.Default.ContentCopy, null, tint = TaskPalette.muted) },
+                        onClick = {
+                            menu = false
+                            if (task.path != null) {
+                                clipboard.setText(AnnotatedString(task.path))
+                                onCopy(true)
+                            } else {
+                                onCopy(false)
+                            }
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("End task", color = TaskPalette.red) },
+                        enabled = !task.protected,
+                        leadingIcon = { Icon(Icons.Default.DeleteOutline, null, tint = TaskPalette.red) },
+                        onClick = { menu = false; onEnd() },
+                    )
+                }
+            }
         }
     }
+}
+
+@Composable
+private fun TaskGroupRow(
+    entry: ProcessEntry,
+    icon: ImageBitmap?,
+    units: TaskUnits,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onClick: () -> Unit,
+    onEndTop: () -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    val disk = entry.diskBytesPerSec
+    val label = "${entry.label} (${entry.tasks.size})"
+    GlassSurface(
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle),
+    ) {
+        Row(Modifier.padding(start = 4.dp, end = 4.dp, top = 11.dp, bottom = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(30.dp).clip(CircleShape).clickable(onClick = onToggle),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                    if (expanded) "Collapse $label" else "Expand $label",
+                    tint = TaskPalette.muted,
+                    modifier = Modifier.size(21.dp),
+                )
+            }
+            Spacer(Modifier.width(4.dp))
+            TaskAppIcon(icon, entry.label, 40.dp, 11.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    label,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = TaskPalette.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(5.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ProcessIdentityChip("${entry.tasks.size} processes", TaskPalette.blue)
+                    ProcessIdentityChip(
+                        if (entry.tasks.any { it.hasWindow }) "App" else "Background",
+                        if (entry.tasks.any { it.hasWindow }) TaskPalette.green else TaskPalette.orange,
+                    )
+                }
+                Spacer(Modifier.height(7.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ProcessMetric(Icons.Default.Speed, TaskPalette.blue, "CPU", String.format(Locale.US, "%.1f%%", entry.cpuPercent))
+                    ProcessMetric(Icons.Default.Memory, TaskPalette.purple, "Memory", formatBytes(entry.workingSetBytes, units))
+                    ProcessMetric(Icons.Default.Language, TaskPalette.orange, "Connections", entry.connectionCount.toString())
+                    if (abs(disk) >= 1024) ProcessMetric(Icons.Default.Storage, TaskPalette.green, "Disk", "${formatBytes(disk, units)}/s")
+                }
+            }
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(38.dp)) {
+                    Icon(
+                        Icons.Default.MoreVert,
+                        "Actions for $label",
+                        tint = TaskPalette.muted,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+                DropdownMenu(
+                    expanded = menu,
+                    onDismissRequest = { menu = false },
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                    border = BorderStroke(1.dp, TaskPalette.border),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(if (expanded) "Collapse" else "Expand") },
+                        leadingIcon = {
+                            Icon(
+                                if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowRight,
+                                null,
+                                tint = TaskPalette.blue,
+                            )
+                        },
+                        onClick = { menu = false; onToggle() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("View top process") },
+                        leadingIcon = { Icon(Icons.Default.Info, null, tint = TaskPalette.blue) },
+                        onClick = { menu = false; onClick() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("End top task", color = TaskPalette.red) },
+                        enabled = !entry.tasks.first().protected,
+                        leadingIcon = { Icon(Icons.Default.DeleteOutline, null, tint = TaskPalette.red) },
+                        onClick = { menu = false; onEndTop() },
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun restartable(task: WindowsTask): Boolean {
+    if (task.protected || task.path == null) return false
+    if (task.name.contains("java", ignoreCase = true) || task.displayName.contains("OpenJDK", ignoreCase = true)) return false
+    val extension = task.path.substringAfterLast('.', "").lowercase(Locale.getDefault())
+    return extension in setOf("exe", "bat", "cmd", "com")
 }
 
 @Composable
@@ -1048,8 +1353,10 @@ private fun TaskDetailDialog(
     task: WindowsTask,
     icon: ImageBitmap?,
     history: MetricHistory,
+    units: TaskUnits,
     running: Boolean,
     onDismiss: () -> Unit,
+    onRestart: () -> Unit,
     onEnd: () -> Unit,
     onCopy: (Boolean) -> Unit,
 ) {
@@ -1116,12 +1423,6 @@ private fun TaskDetailDialog(
                         )
                         Spacer(Modifier.width(7.dp))
                         Text(if (running) "Running" else "Ended", fontSize = 12.sp, color = TaskPalette.muted)
-                        Spacer(Modifier.width(14.dp))
-                        Text(
-                            "${String.format(Locale.US, "%.1f%%", task.cpuPercent)} CPU",
-                            fontSize = 12.sp,
-                            color = TaskPalette.muted,
-                        )
                         if (task.elevated == true) {
                             Spacer(Modifier.width(14.dp))
                             Icon(Icons.Default.Shield, null, tint = TaskPalette.muted, modifier = Modifier.size(14.dp))
@@ -1147,7 +1448,7 @@ private fun TaskDetailDialog(
                                 icon = Icons.Default.Memory,
                                 tint = TaskPalette.purple,
                                 label = "Memory",
-                                value = formatBytes(task.workingSetBytes),
+                                value = formatBytes(task.workingSetBytes, units),
                                 caption = "Working set",
                                 values = history.memory,
                                 modifier = Modifier.weight(1f),
@@ -1159,9 +1460,9 @@ private fun TaskDetailDialog(
                                 icon = Icons.Default.Storage,
                                 tint = TaskPalette.green,
                                 label = "Disk",
-                                value = "${formatBytes(task.diskReadBytesPerSec + task.diskWriteBytesPerSec)}/s",
-                                caption = "Read ${formatBytes(task.diskReadBytesPerSec.toLong())}/s  |  " +
-                                    "Write ${formatBytes(task.diskWriteBytesPerSec.toLong())}/s",
+                                value = "${formatBytes(task.diskReadBytesPerSec + task.diskWriteBytesPerSec, units)}/s",
+                                caption = "Read ${formatBytes(task.diskReadBytesPerSec.toLong(), units)}/s  |  " +
+                                    "Write ${formatBytes(task.diskWriteBytesPerSec.toLong(), units)}/s",
                                 values = history.disk,
                                 modifier = Modifier.weight(1f),
                             )
@@ -1264,13 +1565,22 @@ private fun TaskDetailDialog(
 
                     Spacer(Modifier.height(12.dp))
 
-                    Row {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (restartable(task)) {
+                            PrimaryButton(
+                                text = "Restart task",
+                                icon = Icons.Default.RestartAlt,
+                                enabled = !task.protected,
+                                onClick = onRestart,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
                         PrimaryButton(
                             text = if (task.protected) "Protected" else "End task",
                             icon = if (task.protected) Icons.Default.Lock else Icons.Default.DeleteOutline,
                             enabled = !task.protected,
                             onClick = onEnd,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.weight(1f),
                             destructive = true,
                         )
                     }
@@ -1328,11 +1638,11 @@ private fun DetailMetricCard(
 @Composable
 private fun DetailLocationRow(path: String?, onCopy: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(TaskPalette.cardDeep)
+        Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(10.dp)).background(TaskPalette.cardDeep)
             .border(1.dp, TaskPalette.border, RoundedCornerShape(10.dp)).padding(10.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        IconBadge(Icons.Default.FolderOpen, TaskPalette.blue, 34.dp)
+        Icon(Icons.Default.FolderOpen, null, tint = TaskPalette.blue, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(11.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1375,24 +1685,26 @@ private fun DetailInfoRow(
     value: String,
 ) {
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(TaskPalette.cardDeep)
+        Modifier.fillMaxWidth().padding(bottom = 8.dp).clip(RoundedCornerShape(10.dp)).background(TaskPalette.cardDeep)
             .border(1.dp, TaskPalette.border, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconBadge(icon, tint, 34.dp)
+        Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(11.dp))
         Text(
             label,
             fontSize = 11.sp,
             color = TaskPalette.muted,
-            modifier = Modifier.width(98.dp),
+            maxLines = 2,
+            modifier = Modifier.weight(0.38f),
         )
+        Spacer(Modifier.width(8.dp))
         Text(
             value,
             fontSize = 12.5.sp,
             lineHeight = 17.sp,
             color = TaskPalette.text,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(0.62f),
         )
     }
 }
@@ -1473,15 +1785,63 @@ private fun EndTaskDialog(
 }
 
 @Composable
-private fun StartTaskDialog(
+private fun RestartTaskDialog(
+    task: WindowsTask,
+    busy: Boolean,
+    onDismiss: () -> Unit,
+    onRestart: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        containerColor = MaterialTheme.colorScheme.surface,
+        titleContentColor = TaskPalette.text,
+        textContentColor = TaskPalette.muted,
+        iconContentColor = TaskPalette.green,
+        shape = RoundedCornerShape(24.dp),
+        icon = { Icon(Icons.Default.RestartAlt, null) },
+        title = { Text("Restart ${task.displayName}?") },
+        text = {
+            Text(
+                "Windows will close PID ${task.pid} and start it again from the same location. " +
+                    "Unsaved work in that program can be lost.",
+            )
+        },
+        confirmButton = {
+            Button(
+                enabled = !busy,
+                onClick = onRestart,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = TaskPalette.blueDeep,
+                    contentColor = Color.White,
+                ),
+            ) {
+                if (busy) {
+                    CircularProgressIndicator(
+                        Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White,
+                    )
+                } else {
+                    Text("Restart task")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(enabled = !busy, onClick = onDismiss) {
+                Text("Cancel", color = TaskPalette.muted)
+            }
+        },
+    )
+}
+
+@Composable
+private fun RunCommandDialog(
     profile: PcProfile,
     busy: Boolean,
     onDismiss: () -> Unit,
-    onStart: (String, List<String>, String?) -> Unit,
+    onRun: (String) -> Unit,
 ) {
-    var path by remember { mutableStateOf("") }
-    var arguments by remember { mutableStateOf("") }
-    var directory by remember { mutableStateOf("") }
+    var command by remember { mutableStateOf("") }
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val shape = RoundedCornerShape(26.dp)
     val fieldColors = OutlinedTextFieldDefaults.colors(
@@ -1517,7 +1877,7 @@ private fun StartTaskDialog(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                "Run",
+                                "Run a command",
                                 fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TaskPalette.text,
@@ -1541,63 +1901,30 @@ private fun StartTaskDialog(
                     Spacer(Modifier.height(16.dp))
 
                     OutlinedTextField(
-                        value = path,
-                        onValueChange = { path = it.take(4096) },
-                        label = { Text("Full program path") },
-                        placeholder = { Text("C:\\Windows\\System32\\notepad.exe") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        colors = fieldColors,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = arguments,
-                        onValueChange = { arguments = it.take(2048) },
-                        label = { Text("Arguments (optional)") },
-                        placeholder = { Text("Use quotes for spaces: \"C:\\My Files\\test.txt\"") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        colors = fieldColors,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    OutlinedTextField(
-                        value = directory,
-                        onValueChange = { directory = it.take(4096) },
-                        label = { Text("Start in (optional)") },
+                        value = command,
+                        onValueChange = { command = it.take(500) },
+                        label = { Text("Windows command") },
+                        placeholder = { Text("notepad.exe   |   ipconfig /all   |   shutdown /r /t 0") },
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         colors = fieldColors,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Text(
-                        "Runs on the PC in your signed-in Windows session.",
+                        "Runs with cmd.exe in your signed-in Windows session on ${profile.name}. " +
+                            "Output stays on the PC.",
                         fontSize = 12.sp,
+                        lineHeight = 17.sp,
                         color = TaskPalette.muted,
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier.padding(top = 6.dp),
                     )
-
                     Spacer(Modifier.height(16.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton(
-                            text = "Cancel",
-                            icon = Icons.Default.Close,
-                            onClick = onDismiss,
-                            enabled = !busy,
-                            modifier = Modifier.weight(1f),
-                        )
                         PrimaryButton(
                             text = if (busy) "Running…" else "Run",
                             icon = Icons.Default.PlayArrow,
-                            enabled = path.isNotBlank() && !busy,
-                            onClick = {
-                                onStart(
-                                    path.trim(),
-                                    splitArguments(arguments),
-                                    directory.trim().ifBlank { null },
-                                )
-                            },
+                            enabled = command.isNotBlank() && !busy,
+                            onClick = { onRun(command.trim()) },
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -1645,41 +1972,6 @@ private fun PrimaryButton(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (enabled) MaterialTheme.colorScheme.onPrimary else TaskPalette.faint,
-            )
-        }
-    }
-}
-
-@Composable
-private fun SecondaryButton(
-    text: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
-        modifier.height(50.dp)
-            .clip(shape)
-            .background(TaskPalette.chip)
-            .border(1.dp, TaskPalette.border, shape)
-            .clickable(enabled = enabled, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                icon,
-                null,
-                tint = TaskPalette.text,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(7.dp))
-            Text(
-                text,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = TaskPalette.text,
             )
         }
     }
@@ -1825,43 +2117,32 @@ private fun taskKind(task: WindowsTask): String = when {
     else -> "Background"
 }
 
-private fun splitArguments(raw: String): List<String> {
-    if (raw.isBlank()) return emptyList()
-    val result = mutableListOf<String>()
-    val current = StringBuilder()
-    var quoted = false
-    var index = 0
-    while (index < raw.length) {
-        val character = raw[index]
-        when {
-            character == '"' -> quoted = !quoted
-            character.isWhitespace() && !quoted -> {
-                if (current.isNotEmpty()) {
-                    result += current.toString()
-                    current.clear()
-                }
-            }
-            else -> current.append(character)
-        }
-        index++
-    }
-    if (current.isNotEmpty()) result += current.toString()
-    return result.take(32)
-}
+private fun formatBytes(value: Double, units: TaskUnits): String = formatBytes(value.toLong(), units)
 
-private fun formatBytes(value: Double): String = formatBytes(value.toLong())
-
-private fun formatBytes(value: Long): String {
+private fun formatBytes(value: Long, units: TaskUnits): String {
     if (value <= 0) return "0 B"
-    val units = arrayOf("B", "KB", "MB", "GB", "TB")
+    val steps = arrayOf("B", "KB", "MB", "GB", "TB")
     var size = value.toDouble()
     var unit = 0
-    while (size >= 1024 && unit < units.lastIndex) {
+    while (size >= 1024 && unit < steps.lastIndex) {
         size /= 1024
         unit++
     }
+    val target = when (units) {
+        TaskUnits.AUTO -> unit
+        TaskUnits.MB -> 2
+        TaskUnits.GB -> 3
+    }
+    while (unit < target) {
+        size /= 1024
+        unit++
+    }
+    while (unit > target) {
+        size *= 1024
+        unit--
+    }
     return if (unit == 0) "${size.toInt()} B"
-    else String.format(Locale.US, "%.1f %s", size, units[unit])
+    else String.format(Locale.US, "%.1f %s", size, steps[unit])
 }
 
 private fun formatDate(milliseconds: Long): String =

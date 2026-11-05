@@ -126,6 +126,21 @@ class FrostLockApi(private val signer: DeviceSigner) {
     }
 
     /**
+     * Sends a Windows command line to cmd.exe on the PC. Commands run in the signed-in
+     * desktop session through the same start-task endpoint, so no extra PC permission is
+     * needed beyond task control.
+     */
+    suspend fun runCommand(profile: PcProfile, command: String): StartedTaskSummary {
+        val trimmed = command.trim()
+        require(trimmed.isNotEmpty()) { "Enter a command to run." }
+        return startTask(
+            profile = profile,
+            path = "C:\\Windows\\System32\\cmd.exe",
+            arguments = listOf("/c", trimmed),
+        )
+    }
+
+    /**
      * Icons are fetched in small batches so one refresh never builds a huge response.
      * The PC caches the PNGs, and the phone keeps decoded bitmaps for the session.
      */

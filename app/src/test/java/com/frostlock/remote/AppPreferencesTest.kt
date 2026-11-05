@@ -2,6 +2,8 @@ package com.frostlock.remote
 
 import com.frostlock.remote.data.AppPreferences
 import com.frostlock.remote.data.PcLockSettings
+import com.frostlock.remote.data.TaskRefresh
+import com.frostlock.remote.data.TaskUnits
 import com.frostlock.remote.data.ThemeMode
 import com.frostlock.remote.ui.relativeTime
 import org.junit.Assert.assertEquals
@@ -18,11 +20,32 @@ class AppPreferencesTest {
     }
 
     @Test
+    fun taskUnitsParseKnownValuesAndFallBack() {
+        assertEquals(TaskUnits.AUTO, TaskUnits.from(null))
+        assertEquals(TaskUnits.MB, TaskUnits.from("mb"))
+        assertEquals(TaskUnits.GB, TaskUnits.from("GB"))
+        assertEquals(TaskUnits.AUTO, TaskUnits.from("bytes"))
+    }
+
+    @Test
+    fun taskRefreshParsesSecondsAndPaused() {
+        assertEquals(TaskRefresh.FOUR, TaskRefresh.from(null))
+        assertEquals(TaskRefresh.TWO, TaskRefresh.from("two"))
+        assertEquals(2, TaskRefresh.TWO.seconds)
+        assertEquals(15, TaskRefresh.FIFTEEN.seconds)
+        assertEquals(0, TaskRefresh.PAUSED.seconds)
+        assertEquals(TaskRefresh.FOUR, TaskRefresh.from("hourly"))
+    }
+
+    @Test
     fun defaultsAreSafe() {
         val defaults = AppPreferences()
         assertEquals(ThemeMode.SYSTEM, defaults.theme)
         assertEquals(true, defaults.haptics)
         assertEquals(false, defaults.requireDeviceAuthentication)
+        assertEquals(TaskUnits.AUTO, defaults.taskUnits)
+        assertEquals(true, defaults.taskGrouping)
+        assertEquals(TaskRefresh.FOUR, defaults.taskRefresh)
     }
 
     @Test

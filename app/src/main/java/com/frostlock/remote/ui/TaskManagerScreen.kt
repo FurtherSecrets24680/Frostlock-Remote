@@ -193,103 +193,110 @@ fun TaskManagerScreen(
                 }
             }
 
-            SummaryCard(snapshot, Modifier.padding(horizontal = 16.dp, vertical = 10.dp))
-
-            OutlinedTextField(
-                value = search,
-                onValueChange = { search = it.take(80) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                placeholder = { Text("Search name, publisher, or path") },
-                leadingIcon = { Icon(Icons.Default.Search, null) },
-                trailingIcon = {
-                    if (search.isNotEmpty()) {
-                        IconButton(onClick = { search = "" }) { Icon(Icons.Default.Close, "Clear search") }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-            )
-
-            Row(
-                Modifier.fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 9.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TaskFilter.entries.forEach { option ->
-                    FilterChip(
-                        selected = filter == option,
-                        onClick = { filter = option },
-                        label = { Text(option.label) },
-                    )
-                }
-                Spacer(Modifier.width(4.dp))
-                SortMenu(sort) { sort = it }
-                Spacer(Modifier.width(4.dp))
-                FilledTonalButton(
-                    onClick = { startOpen = true },
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
-                ) {
-                    Icon(Icons.Default.Add, null, Modifier.size(17.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text("Start task", fontSize = 12.sp)
-                }
-            }
-
-            if (error != null) {
-                Surface(
-                    color = colors.errorContainer,
-                    contentColor = colors.onErrorContainer,
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                ) {
-                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        WarningIcon(colors.onErrorContainer)
-                        Spacer(Modifier.width(9.dp))
-                        Text(
-                            error.orEmpty(),
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            modifier = Modifier.weight(1f),
-                        )
-                        TextButton(onClick = { scope.launch { loadSnapshot(true) } }) { Text("Retry") }
-                    }
-                }
-            }
-
-            Row(
-                Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "${processes.size} ${if (processes.size == 1) "process" else "processes"}",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                if (snapshot != null) {
-                    Text(
-                        if (autoRefresh) "Updates every 4s" else "Live updates paused",
-                        fontSize = 11.sp,
-                        color = colors.onSurfaceVariant,
-                    )
-                }
-            }
-
             LazyColumn(
                 Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                item(key = "summary") { SummaryCard(snapshot) }
+
+                item(key = "search") {
+                    OutlinedTextField(
+                        value = search,
+                        onValueChange = { search = it.take(80) },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Search name, publisher, or path") },
+                        leadingIcon = { Icon(Icons.Default.Search, null) },
+                        trailingIcon = {
+                            if (search.isNotEmpty()) {
+                                IconButton(onClick = { search = "" }) { Icon(Icons.Default.Close, "Clear search") }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                }
+
+                item(key = "filters") {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TaskFilter.entries.forEach { option ->
+                            FilterChip(
+                                selected = filter == option,
+                                onClick = { filter = option },
+                                label = { Text(option.label) },
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        SortMenu(sort) { sort = it }
+                        Spacer(Modifier.width(4.dp))
+                        FilledTonalButton(
+                            onClick = { startOpen = true },
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp),
+                        ) {
+                            Icon(Icons.Default.Add, null, Modifier.size(17.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Start task", fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                if (error != null) {
+                    item(key = "error") {
+                        Surface(
+                            color = colors.errorContainer,
+                            contentColor = colors.onErrorContainer,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                WarningIcon(colors.onErrorContainer)
+                                Spacer(Modifier.width(9.dp))
+                                Text(
+                                    error.orEmpty(),
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                TextButton(onClick = { scope.launch { loadSnapshot(true) } }) { Text("Retry") }
+                            }
+                        }
+                    }
+                }
+
+                item(key = "count") {
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "${processes.size} ${if (processes.size == 1) "process" else "processes"}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (snapshot != null) {
+                            Text(
+                                if (autoRefresh) "Updates every 4s" else "Live updates paused",
+                                fontSize = 11.sp,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+
                 if (snapshot == null && refreshing) {
-                    item {
+                    item(key = "loading") {
                         Box(Modifier.fillMaxWidth().padding(top = 40.dp), contentAlignment = Alignment.Center) {
                             CircularProgressIndicator()
                         }
                     }
                 }
+
                 items(processes, key = { it.pid }) { task ->
                     TaskRow(
                         task = task,
@@ -570,7 +577,7 @@ private fun TaskDetailDialog(
                 DetailRow(
                     "Network",
                     if (task.connectionCount == 0) {
-                        "No IPv4 TCP/UDP sockets"
+                        "No IPv4/IPv6 TCP/UDP sockets"
                     } else {
                         "${task.connectionCount} socket${if (task.connectionCount == 1) "" else "s"}" +
                             task.remoteEndpoints.takeIf { it.isNotEmpty() }?.joinToString(

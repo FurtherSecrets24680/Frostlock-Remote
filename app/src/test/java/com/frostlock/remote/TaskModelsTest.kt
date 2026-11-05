@@ -102,4 +102,36 @@ class TaskModelsTest {
         assertTrue(system.protected)
         assertEquals("Windows core process", system.protectedReason)
     }
+
+    @Test fun treatsExplicitJsonNullsAsMissing() {
+        val task = WindowsTaskSnapshot.fromJson(
+            JSONObject(
+                """
+                {
+                  "sampledAtMs": 1,
+                  "processes": [
+                    {
+                      "pid": 7,
+                      "name": "otty",
+                      "displayName": "Otty",
+                      "publisher": null,
+                      "version": null,
+                      "path": null,
+                      "iconKey": null,
+                      "mainWindowTitle": null,
+                      "protectedReason": null
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            ),
+        ).processes.single()
+
+        assertNull(task.publisher)
+        assertNull(task.version)
+        assertNull(task.path)
+        assertNull(task.iconKey)
+        assertNull(task.mainWindowTitle)
+        assertNull(task.protectedReason)
+    }
 }

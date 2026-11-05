@@ -2,6 +2,15 @@ package com.frostlock.remote.data
 
 import org.json.JSONObject
 
+/**
+ * org.json turns an explicit JSON null into the literal string "null" for optString.
+ * Nullable protocol fields must stay absent instead of leaking that text into the UI.
+ */
+internal fun JSONObject.stringOrNull(name: String): String? {
+    if (!has(name) || isNull(name)) return null
+    return optString(name).takeIf(String::isNotBlank)
+}
+
 data class PcProfile(
     val id: String,
     val name: String,
@@ -55,10 +64,10 @@ data class FreezeSnapshot(
     companion object {
         fun fromJson(json: JSONObject): FreezeSnapshot = FreezeSnapshot(
             phase = json.optString("phase", "unknown"),
-            mode = json.optString("mode").takeIf(String::isNotBlank),
+            mode = json.stringOrNull("mode"),
             remainingSeconds = if (json.isNull("remainingSeconds")) null else json.optLong("remainingSeconds"),
             remoteReleaseAllowed = json.optBoolean("remoteReleaseAllowed", false),
-            observedAt = json.optString("observedAt").takeIf(String::isNotBlank),
+            observedAt = json.stringOrNull("observedAt"),
         )
     }
 }
@@ -212,10 +221,10 @@ private fun parseWindowsTask(json: JSONObject): WindowsTask {
         pid = json.optInt("pid"),
         name = json.optString("name", "process"),
         displayName = json.optString("displayName", json.optString("name", "Process")),
-        publisher = json.optString("publisher").takeIf(String::isNotBlank),
-        version = json.optString("version").takeIf(String::isNotBlank),
-        path = json.optString("path").takeIf(String::isNotBlank),
-        iconKey = json.optString("iconKey").takeIf(String::isNotBlank),
+        publisher = json.stringOrNull("publisher"),
+        version = json.stringOrNull("version"),
+        path = json.stringOrNull("path"),
+        iconKey = json.stringOrNull("iconKey"),
         cpuPercent = json.optDouble("cpuPercent", 0.0),
         workingSetBytes = json.optLong("workingSetBytes"),
         privateBytes = json.optLong("privateBytes"),
@@ -228,11 +237,11 @@ private fun parseWindowsTask(json: JSONObject): WindowsTask {
         threadCount = json.optInt("threadCount"),
         sessionId = json.optInt("sessionId", -1),
         startedAtMs = json.optLong("startedAtMs"),
-        mainWindowTitle = json.optString("mainWindowTitle").takeIf(String::isNotBlank),
+        mainWindowTitle = json.stringOrNull("mainWindowTitle"),
         hasWindow = json.optBoolean("hasWindow", false),
         elevated = elevatedValue,
         protected = json.optBoolean("protected", false),
-        protectedReason = json.optString("protectedReason").takeIf(String::isNotBlank),
+        protectedReason = json.stringOrNull("protectedReason"),
     )
 }
 

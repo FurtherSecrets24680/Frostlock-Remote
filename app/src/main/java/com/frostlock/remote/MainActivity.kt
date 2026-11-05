@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -927,19 +928,34 @@ private fun PcControlScreen(
                 border = BorderStroke(1.dp, if (active) colors.error.copy(alpha = 0.4f) else colors.outlineVariant),
                 shadowElevation = if (allowed && !busy) 4.dp else 0.dp,
                 modifier = Modifier.size(208.dp).semantics {
-                    contentDescription = if (active) "Unlock ${pc.profile.name}" else "Freeze ${pc.profile.name}"
+                    contentDescription = if (active) "Unfreeze ${pc.profile.name}" else "Freeze ${pc.profile.name}"
                 },
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     if (busy) CircularProgressIndicator(Modifier.size(48.dp), strokeWidth = 3.dp, color = LocalContentColor.current)
                     else Icon(if (active) Icons.Default.LockOpen else Icons.Default.Lock, null, modifier = Modifier.size(58.dp))
                     Spacer(Modifier.height(12.dp))
-                    Text(if (active) "Unlock" else "Freeze", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                    if (!active && lockOptions != null) {
-                        Spacer(Modifier.height(4.dp))
-                        Text("Mode: ${lockOptions.mode}  |  Duration: $durationLabel", fontSize = 12.sp)
-                    }
+                    Text(if (active) "Unfreeze" else "Freeze", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                 }
+            }
+            if (active && pc.snapshot != null) {
+                Spacer(Modifier.height(14.dp))
+                ControlStatusCard(
+                    heading = "Status",
+                    firstLabel = "Mode",
+                    firstValue = pc.snapshot.mode ?: "Freeze",
+                    secondLabel = "Duration",
+                    secondValue = if (remaining > 0) formatTime(remaining) else "Until you unfreeze",
+                )
+            } else if (!active && lockOptions != null) {
+                Spacer(Modifier.height(14.dp))
+                ControlStatusCard(
+                    heading = "Options",
+                    firstLabel = "Mode",
+                    firstValue = lockOptions.mode,
+                    secondLabel = "Duration",
+                    secondValue = durationLabel,
+                )
             }
             Spacer(Modifier.height(20.dp))
             Text(
@@ -1010,6 +1026,52 @@ private fun PcControlScreen(
                     }
                 }
             }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ControlStatusCard(
+    heading: String,
+    firstLabel: String,
+    firstValue: String,
+    secondLabel: String,
+    secondValue: String,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        color = colors.surface,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, colors.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
+            Text(heading, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurfaceVariant)
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text(firstLabel, fontSize = 11.sp, color = colors.onSurfaceVariant)
+                    Text(
+                        firstValue,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Column(Modifier.weight(1f)) {
+                    Text(secondLabel, fontSize = 11.sp, color = colors.onSurfaceVariant)
+                    Text(
+                        secondValue,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }

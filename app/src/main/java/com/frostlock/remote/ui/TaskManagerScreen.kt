@@ -826,8 +826,10 @@ private fun TaskFilterRow(
     onSort: (TaskSort) -> Unit,
     onStart: () -> Unit,
 ) {
+    val scroll = rememberScrollState()
+    LaunchedEffect(Unit) { scroll.scrollTo(0) }
     Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+        Modifier.fillMaxWidth().horizontalScroll(scroll),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1079,13 +1081,13 @@ private fun TaskDetailDialog(
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
-            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 22.dp),
+            Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
             contentAlignment = Alignment.Center,
         ) {
             Box(
                 Modifier.fillMaxWidth()
                     .widthIn(max = 560.dp)
-                    .heightIn(max = screenHeight * 0.95f)
+                    .heightIn(max = screenHeight * 0.96f)
                     .fillMaxHeight()
                     .clip(shape)
                     .background(
@@ -1197,37 +1199,18 @@ private fun TaskDetailDialog(
                             )
                         }
 
-                        Spacer(Modifier.height(14.dp))
+                        Spacer(Modifier.height(12.dp))
                         Box(
                             Modifier.fillMaxWidth().height(1.dp)
                                 .background(TaskPalette.borderSoft),
                         )
-                        Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(10.dp))
 
-                        DetailInfoRow(
-                            icon = Icons.Default.FolderOpen,
-                            tint = TaskPalette.blue,
-                            label = "Location",
-                            value = task.path ?: "Not available",
-                            trailing = if (task.path != null) {
-                                {
-                                    CircleGlassButton(
-                                        size = 32.dp,
-                                        onClick = {
-                                            clipboard.setText(AnnotatedString(task.path.orEmpty()))
-                                            onCopy(true)
-                                        },
-                                    ) {
-                                        Icon(
-                                            Icons.Default.ContentCopy,
-                                            "Copy location",
-                                            tint = TaskPalette.muted,
-                                            modifier = Modifier.size(14.dp),
-                                        )
-                                    }
-                                }
-                            } else {
-                                null
+                        DetailLocationRow(
+                            path = task.path,
+                            onCopy = {
+                                clipboard.setText(AnnotatedString(task.path.orEmpty()))
+                                onCopy(true)
                             },
                         )
                         DetailInfoRow(
@@ -1342,7 +1325,7 @@ private fun DetailMetricCard(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier.height(136.dp)
+        modifier.height(126.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(
                 Brush.linearGradient(
@@ -1381,12 +1364,52 @@ private fun DetailMetricCard(
 }
 
 @Composable
+private fun DetailLocationRow(path: String?, onCopy: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        IconBadge(Icons.Default.FolderOpen, TaskPalette.blue, 34.dp)
+        Spacer(Modifier.width(11.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Location",
+                    fontSize = 11.sp,
+                    color = TaskPalette.muted,
+                    modifier = Modifier.weight(1f),
+                )
+                if (path != null) {
+                    CircleGlassButton(
+                        size = 28.dp,
+                        onClick = onCopy,
+                    ) {
+                        Icon(
+                            Icons.Default.ContentCopy,
+                            "Copy location",
+                            tint = TaskPalette.muted,
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                path ?: "Not available",
+                fontSize = 12.5.sp,
+                lineHeight = 17.sp,
+                color = TaskPalette.text,
+            )
+        }
+    }
+}
+
+@Composable
 private fun DetailInfoRow(
     icon: ImageVector,
     tint: Color,
     label: String,
     value: String,
-    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -1407,10 +1430,6 @@ private fun DetailInfoRow(
             color = TaskPalette.text,
             modifier = Modifier.weight(1f),
         )
-        if (trailing != null) {
-            Spacer(Modifier.width(6.dp))
-            trailing()
-        }
     }
 }
 

@@ -111,7 +111,7 @@ fun PcLockSettingsScreen(
                     Selection("Default duration", durationLabel(draft.durationSeconds), DURATION_CHOICES.map { durationLabel(it) }) { label ->
                         draft = draft.copy(durationSeconds = DURATION_CHOICES.first { durationLabel(it) == label })
                     }
-                    Text("Until I unlock disables the timer. Any PC safety auto-release limit still applies.", color = colors.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
+                    Text("Until I unfreeze disables the timer. Any PC safety auto-release limit still applies.", color = colors.onSurfaceVariant, fontSize = 12.sp, lineHeight = 18.sp)
                     Text("Arm delay: ${draft.armSeconds} sec", color = colors.onSurface, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 12.dp))
                     Slider(value = draft.armSeconds.toFloat(), onValueChange = { draft = draft.copy(armSeconds = it.toInt()) }, valueRange = 0f..120f, steps = 119)
                     Selection("Safety auto-release", safetyLabel(draft.safetyMaxSeconds), SAFETY_CHOICES.map(::safetyLabel)) { label ->
@@ -214,7 +214,7 @@ private val DURATION_CHOICES = listOf(0, 300, 900, 1800, 3600, 7200, 14400, 2880
 private val SAFETY_CHOICES = listOf(0, 1800, 3600, 7200, 14400, 43200, 86400)
 
 private fun durationLabel(seconds: Int): String = when {
-    seconds <= 0 -> "Until I unlock"
+    seconds <= 0 -> "Until I unfreeze"
     seconds % 3600 == 0 -> "${seconds / 3600} hr"
     seconds % 60 == 0 -> "${seconds / 60} min"
     else -> "$seconds sec"

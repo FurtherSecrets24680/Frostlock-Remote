@@ -813,7 +813,7 @@ private fun PcCard(
                 Text(pc.error, color = colors.onSurfaceVariant, fontSize = 13.sp, lineHeight = 19.sp)
                 val lastSeen = pc.profile.lastSeenAt
                 Text(
-                    if (lastSeen != null) "Last seen ${relativeTime(lastSeen)}. Offline does not mean unlocked." else "Never connected from this phone. Offline does not mean unlocked.",
+                    if (lastSeen != null) "Last seen ${relativeTime(lastSeen)}. Offline does not mean unfrozen." else "Never connected from this phone. Offline does not mean unfrozen.",
                     color = colors.onSurfaceVariant,
                     fontSize = 12.sp,
                     lineHeight = 18.sp,
@@ -839,7 +839,7 @@ private fun PcCard(
 private fun formatTime(seconds: Long): String = "%d:%02d remaining".format(seconds / 60, seconds % 60)
 
 private fun freezeDurationLabel(seconds: Int): String = when {
-    seconds <= 0 -> "Until I unlock"
+    seconds <= 0 -> "Until I unfreeze"
     seconds % 3600 == 0 -> "${seconds / 3600} hours"
     seconds % 60 == 0 -> "${seconds / 60} minutes"
     else -> "$seconds seconds"
@@ -961,13 +961,13 @@ private fun PcControlScreen(
             Text(
                 when {
                     pc.checking -> "Waiting for the PC to report its current state."
-                    pc.error != null -> "${pc.error}. Offline does not mean unlocked."
+                    pc.error != null -> "${pc.error}. Offline does not mean unfrozen."
                     !active && lockOptionsLoading -> "Loading this PC’s saved lock options."
                     !active && lockOptions == null -> "Could not load this PC’s lock options. Open Lock options to retry before freezing."
                     active && remaining > 0 -> "${pc.snapshot?.mode ?: "Freeze"} mode, ${formatTime(remaining)} remaining"
                     active && !pc.snapshot!!.remoteReleaseAllowed -> "Release is disabled by this PC’s lock policy."
                     active -> "This PC reports an active freeze."
-                    durationSeconds == 0 -> "No timer. The PC’s lock options set this freeze to continue until you unlock."
+                    durationSeconds == 0 -> "No timer. The PC’s lock options set this freeze to continue until you unfreeze."
                     else -> "Tap the circle to freeze this PC in ${lockOptions?.mode} mode for $durationLabel."
                 },
                 color = colors.onSurfaceVariant,
@@ -987,7 +987,7 @@ private fun PcControlScreen(
             ) {
                 Column {
                     Row(
-                        Modifier.fillMaxWidth().clickable(onClick = onTaskManager).padding(horizontal = 16.dp, vertical = 15.dp),
+                        Modifier.fillMaxWidth().clickable(onClick = onLockSettings).padding(horizontal = 16.dp, vertical = 15.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Icon(Icons.Default.Settings, null, tint = colors.primary)

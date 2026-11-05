@@ -216,7 +216,7 @@ class ConfirmUnlockActivity : AppCompatActivity() {
                     RemoteControl.toast(
                         this@ConfirmUnlockActivity,
                         if (snapshot.isActive) "The freeze is still active on ${pc.name}."
-                        else "Unlocked ${pc.name}.",
+                        else "Unfrozen ${pc.name}.",
                     )
                     finishWith(!snapshot.isActive)
                 }

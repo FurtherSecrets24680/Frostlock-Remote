@@ -18,7 +18,7 @@ data class WidgetState(
         get() = when {
             !configured -> "Set up"
             busy -> "Working"
-            active -> "Unlock"
+            active -> "Unfreeze"
             else -> "Freeze"
         }
 

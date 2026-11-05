@@ -128,7 +128,7 @@ private fun ConfigureScreen(
                 modifier = Modifier.padding(top = 5.dp),
             )
             Text(
-                "This widget freezes and unlocks the PC you pick here.",
+                "This widget freezes and unfreezes the PC you pick here.",
                 color = colors.onSurfaceVariant,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,

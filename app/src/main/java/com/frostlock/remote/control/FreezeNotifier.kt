@@ -70,7 +70,7 @@ internal object FreezeNotifier {
             builder.setChronometerCountDown(true)
         }
         if (snapshot.remoteReleaseAllowed) {
-            builder.addAction(R.drawable.ic_notification_lock, "Unlock", unlock)
+            builder.addAction(R.drawable.ic_notification_lock, "Unfreeze", unlock)
         }
 
         NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build())

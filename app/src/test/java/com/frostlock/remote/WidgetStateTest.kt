@@ -16,7 +16,7 @@ class WidgetStateTest {
     @Test
     fun activeFreezeShowsUnlock() {
         val state = WidgetState(configured = true, active = true, mode = "Strict", remainingSeconds = 600)
-        assertEquals("Unlock", state.buttonLabel)
+        assertEquals("Unfreeze", state.buttonLabel)
         assertEquals("Strict mode, 10 min left", state.statusLine)
     }
 

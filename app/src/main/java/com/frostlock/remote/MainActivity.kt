@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings as AndroidSettings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -83,8 +82,6 @@ import androidx.lifecycle.lifecycleScope
 import com.frostlock.remote.control.ConfirmUnlockActivity
 import com.frostlock.remote.control.ControlStore
 import com.frostlock.remote.control.RemoteControl
-import com.frostlock.remote.security.AppAuthenticationActivity
-import com.frostlock.remote.security.AppAuthenticationGate
 import com.frostlock.remote.data.*
 import com.frostlock.remote.ui.FrostTheme
 import com.frostlock.remote.ui.PcLockSettingsScreen
@@ -168,64 +165,9 @@ private fun RemoteApp(
     var prefs by remember { mutableStateOf(initialPreferences) }
     LaunchedEffect(initialPreferences) { prefs = initialPreferences }
 
-    var appAuthenticated by remember { mutableStateOf(!prefs.requireDeviceAuthentication) }
-    var authActivityInFlight by remember { mutableStateOf(false) }
-    var authAttemptedThisForeground by remember { mutableStateOf(false) }
-    var foregroundCycle by remember { mutableIntStateOf(0) }
-    var authUnavailable by remember { mutableStateOf(false) }
-    val deviceAuthenticationAvailable = remember(context) {
-        AppAuthenticationActivity.canAuthenticate(context)
-    }
-    val appAuthenticationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        authActivityInFlight = false
-        appAuthenticated = result.resultCode == Activity.RESULT_OK
-        authUnavailable = result.data?.getBooleanExtra(
-            AppAuthenticationActivity.EXTRA_AUTH_UNAVAILABLE,
-            false,
-        ) == true
-    }
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    fun requestAppAuthentication() {
-        if (authActivityInFlight) return
-        authActivityInFlight = true
-        authAttemptedThisForeground = true
-        appAuthenticationLauncher.launch(AppAuthenticationActivity.intent(context, prefs.theme))
-    }
-
-    DisposableEffect(lifecycleOwner, prefs.requireDeviceAuthentication) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (!prefs.requireDeviceAuthentication) return@LifecycleEventObserver
-            when (event) {
-                androidx.lifecycle.Lifecycle.Event.ON_STOP -> if (!authActivityInFlight) {
-                    appAuthenticated = false
-                    authAttemptedThisForeground = false
-                }
-                androidx.lifecycle.Lifecycle.Event.ON_START -> if (!authActivityInFlight) {
-                    foregroundCycle++
-                }
-                else -> Unit
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
-    LaunchedEffect(prefs.requireDeviceAuthentication, foregroundCycle) {
-        if (!prefs.requireDeviceAuthentication) {
-            appAuthenticated = true
-            authUnavailable = false
-        } else if (!appAuthenticated && !authActivityInFlight && !authAttemptedThisForeground) {
-            requestAppAuthentication()
-        }
-    }
-
     fun applyPreferences(transform: (AppPreferences) -> AppPreferences) {
         val next = transform(prefs)
         prefs = next
-        if (!next.requireDeviceAuthentication) appAuthenticated = true
         scope.launch { withContext(Dispatchers.IO) { preferences.save(next) } }
     }
 
@@ -344,28 +286,6 @@ private fun RemoteApp(
         toast = null
     }
 
-    BackHandler(enabled = prefs.requireDeviceAuthentication && !appAuthenticated) { }
-
-    if (prefs.requireDeviceAuthentication && !appAuthenticated) {
-        AppAuthenticationGate(
-            unavailable = authUnavailable,
-            onRetry = {
-                authUnavailable = false
-                authAttemptedThisForeground = false
-                requestAppAuthentication()
-            },
-            onOpenDeviceSettings = {
-                runCatching { context.startActivity(Intent(AndroidSettings.ACTION_SECURITY_SETTINGS)) }
-                    .onFailure { authUnavailable = true }
-            },
-            onDisableAppLock = {
-                applyPreferences { it.copy(requireDeviceAuthentication = false) }
-                authUnavailable = false
-            },
-        )
-        return
-    }
-
     Box(Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = screen,
@@ -422,16 +342,6 @@ private fun RemoteApp(
             onTaskUnitsChange = { units -> applyPreferences { it.copy(taskUnits = units) } },
             onTaskGroupingChange = { grouped -> applyPreferences { it.copy(taskGrouping = grouped) } },
             onTaskRefreshChange = { refresh -> applyPreferences { it.copy(taskRefresh = refresh) } },
-            onDeviceAuthenticationChange = { required ->
-                if (!required || deviceAuthenticationAvailable) {
-                    applyPreferences { it.copy(requireDeviceAuthentication = required) }
-                    if (required) {
-                        appAuthenticated = true
-                        authUnavailable = false
-                    }
-                }
-            },
-            deviceAuthenticationAvailable = deviceAuthenticationAvailable,
             onRemovePc = ::removePc,
             onReset = { applyPreferences { AppPreferences() } },
             onBack = { screen = Screen.HOME; toast = null },

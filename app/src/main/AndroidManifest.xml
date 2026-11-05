@@ -25,12 +25,6 @@
         </activity>
 
         <activity
-            android:name=".security.AppAuthenticationActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:theme="@style/Theme.FrostLock.AppLock" />
-
-        <activity
             android:name=".widget.WidgetConfigureActivity"
             android:excludeFromRecents="true"
             android:exported="true"
@@ -59,6 +53,7 @@
             android:exported="false"
             android:label="@string/confirm_unlock_title"
             android:launchMode="singleTop"
+            android:taskAffinity=""
             android:theme="@style/Theme.FrostLock.Transparent" />
 
         <service

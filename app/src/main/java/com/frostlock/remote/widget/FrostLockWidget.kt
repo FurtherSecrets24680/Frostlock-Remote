@@ -31,6 +31,18 @@ class FrostLockWidget : AppWidgetProvider() {
         refresh(context, appWidgetIds)
     }
 
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        manager: AppWidgetManager,
+        appWidgetId: Int,
+        newOptions: android.os.Bundle,
+    ) {
+        // Keep the drawing in step with the size the launcher is giving us. Compact
+        // layouts are used below three cells so the widget stays legible when resized.
+        renderWidget(context, manager, appWidgetId, cachedState(context, appWidgetId))
+        refresh(context, intArrayOf(appWidgetId))
+    }
+
     override fun onDeleted(context: Context, appWidgetIds: IntArray) {
         val store = WidgetStore(context)
         appWidgetIds.forEach(store::unbind)
@@ -201,7 +213,12 @@ private fun cachedState(context: Context, widgetId: Int): WidgetState {
 }
 
 private fun renderWidget(context: Context, manager: AppWidgetManager, widgetId: Int, state: WidgetState) {
-    val views = RemoteViews(context.packageName, R.layout.widget_frostlock)
+    val options = manager.getAppWidgetOptions(widgetId)
+    val minWidth = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0)
+    val minHeight = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
+    val compact = useCompactWidgetLayout(minWidth, minHeight)
+    val layout = if (compact) R.layout.widget_frostlock_compact else R.layout.widget_frostlock
+    val views = RemoteViews(context.packageName, layout)
     val active = state.configured && state.active
 
     views.setInt(R.id.widget_circle, "setBackgroundResource", when {

@@ -35,6 +35,14 @@ data class WidgetState(
         }
 }
 
+/**
+ * Whether the launcher is showing the widget at a size that needs the compact
+ * layout. Two cells and anything narrower use the smaller circle and one-line
+ * status so the content never clips.
+ */
+internal fun useCompactWidgetLayout(minWidthDp: Int, minHeightDp: Int): Boolean =
+    minWidthDp in 1..149 || minHeightDp in 1..149
+
 private fun formatRemaining(seconds: Long): String {
     val minutes = (seconds + 59) / 60
     return when {

@@ -55,8 +55,6 @@ fun SettingsScreen(
     pcs: List<PcProfile>,
     onThemeChange: (ThemeMode) -> Unit,
     onHapticsChange: (Boolean) -> Unit,
-    onDeviceAuthenticationChange: (Boolean) -> Unit,
-    deviceAuthenticationAvailable: Boolean,
     onTaskUnitsChange: (TaskUnits) -> Unit,
     onTaskGroupingChange: (Boolean) -> Unit,
     onTaskRefreshChange: (TaskRefresh) -> Unit,
@@ -133,23 +131,6 @@ fun SettingsScreen(
                         description = "Collapse processes with the same name into one row with combined totals.",
                         checked = preferences.taskGrouping,
                         onCheckedChange = onTaskGroupingChange,
-                    )
-                }
-            }
-
-            item {
-                SectionLabel("Security")
-                SettingsCard {
-                    SettingSwitch(
-                        title = "Require device authentication",
-                        description = if (deviceAuthenticationAvailable) {
-                            "Ask for your fingerprint, PIN, pattern, or password when you reopen FrostLock Remote."
-                        } else {
-                            "Set up a fingerprint or screen lock on this phone to enable app protection."
-                        },
-                        checked = preferences.requireDeviceAuthentication,
-                        onCheckedChange = onDeviceAuthenticationChange,
-                        enabled = deviceAuthenticationAvailable || preferences.requireDeviceAuthentication,
                     )
                 }
             }

@@ -42,7 +42,6 @@ class AppPreferencesTest {
         val defaults = AppPreferences()
         assertEquals(ThemeMode.SYSTEM, defaults.theme)
         assertEquals(true, defaults.haptics)
-        assertEquals(false, defaults.requireDeviceAuthentication)
         assertEquals(TaskUnits.AUTO, defaults.taskUnits)
         assertEquals(true, defaults.taskGrouping)
         assertEquals(TaskRefresh.FOUR, defaults.taskRefresh)

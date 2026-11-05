@@ -49,7 +49,6 @@ enum class TaskRefresh(val label: String, val seconds: Int) {
 data class AppPreferences(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     val haptics: Boolean = true,
-    val requireDeviceAuthentication: Boolean = false,
     val taskUnits: TaskUnits = TaskUnits.AUTO,
     val taskGrouping: Boolean = true,
     val taskRefresh: TaskRefresh = TaskRefresh.FOUR,
@@ -60,7 +59,6 @@ private val Context.settingsDataStore by preferencesDataStore(name = "app_settin
 class PreferencesStore(private val context: Context) {
     private val themeKey = stringPreferencesKey("theme")
     private val hapticsKey = booleanPreferencesKey("haptics")
-    private val deviceAuthenticationKey = booleanPreferencesKey("require_device_authentication")
     private val taskUnitsKey = stringPreferencesKey("task_units")
     private val taskGroupingKey = booleanPreferencesKey("task_grouping")
     private val taskRefreshKey = stringPreferencesKey("task_refresh")
@@ -69,7 +67,6 @@ class PreferencesStore(private val context: Context) {
         AppPreferences(
             theme = ThemeMode.from(prefs[themeKey]),
             haptics = prefs[hapticsKey] ?: true,
-            requireDeviceAuthentication = prefs[deviceAuthenticationKey] ?: false,
             taskUnits = TaskUnits.from(prefs[taskUnitsKey]),
             taskGrouping = prefs[taskGroupingKey] ?: true,
             taskRefresh = TaskRefresh.from(prefs[taskRefreshKey]),
@@ -80,7 +77,6 @@ class PreferencesStore(private val context: Context) {
         context.settingsDataStore.edit { prefs ->
             prefs[themeKey] = preferences.theme.name
             prefs[hapticsKey] = preferences.haptics
-            prefs[deviceAuthenticationKey] = preferences.requireDeviceAuthentication
             prefs[taskUnitsKey] = preferences.taskUnits.name
             prefs[taskGroupingKey] = preferences.taskGrouping
             prefs[taskRefreshKey] = preferences.taskRefresh.name

@@ -1,7 +1,10 @@
 package com.frostlock.remote
 
 import com.frostlock.remote.widget.WidgetState
+import com.frostlock.remote.widget.useCompactWidgetLayout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WidgetStateTest {
@@ -56,6 +59,14 @@ class WidgetStateTest {
     fun blockedReleaseIsCalledOut() {
         val state = WidgetState(configured = true, active = true, remoteReleaseAllowed = false)
         assertEquals("Release is blocked by this PC", state.statusLine)
+    }
+
+    @Test
+    fun compactLayoutIsUsedBelowThreeCells() {
+        assertTrue(useCompactWidgetLayout(minWidthDp = 110, minHeightDp = 110))
+        assertTrue(useCompactWidgetLayout(minWidthDp = 110, minHeightDp = 180))
+        assertFalse(useCompactWidgetLayout(minWidthDp = 180, minHeightDp = 180))
+        assertFalse(useCompactWidgetLayout(minWidthDp = 0, minHeightDp = 0))
     }
 
     @Test

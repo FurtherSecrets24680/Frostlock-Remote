@@ -17,7 +17,7 @@ class WidgetStateTest {
     fun activeFreezeShowsUnlock() {
         val state = WidgetState(configured = true, active = true, mode = "Strict", remainingSeconds = 600)
         assertEquals("Unlock", state.buttonLabel)
-        assertEquals("Strict · 10 min left", state.statusLine)
+        assertEquals("Strict mode, 10 min left", state.statusLine)
     }
 
     @Test
@@ -37,11 +37,11 @@ class WidgetStateTest {
     @Test
     fun longFreezesReadInHours() {
         assertEquals(
-            "Gentle · 1 hr left",
+            "Gentle mode, 1 hr left",
             WidgetState(configured = true, active = true, mode = "Gentle", remainingSeconds = 3600).statusLine,
         )
         assertEquals(
-            "Gentle · 1 hr 5 min left",
+            "Gentle mode, 1 hr 5 min left",
             WidgetState(configured = true, active = true, mode = "Gentle", remainingSeconds = 3900).statusLine,
         )
     }
@@ -49,7 +49,7 @@ class WidgetStateTest {
     @Test
     fun roundedMinuteNeverShowsZero() {
         val state = WidgetState(configured = true, active = true, remainingSeconds = 20)
-        assertEquals("Freeze · 1 min left", state.statusLine)
+        assertEquals("Freeze mode, 1 min left", state.statusLine)
     }
 
     @Test

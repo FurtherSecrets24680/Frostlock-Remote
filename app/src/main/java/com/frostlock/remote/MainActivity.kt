@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -101,7 +103,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
-private enum class Screen { HOME, PAIR, SETTINGS, CONTROL, LOCK_SETTINGS, TASKS }
+private enum class Screen { HOME, PAIR, SETTINGS, CONTROL, LOCK_SETTINGS, TASKS, CONNECTION_DETAILS }
 private data class PcState(val profile: PcProfile, val snapshot: FreezeSnapshot? = null, val checking: Boolean = true, val error: String? = null)
 
 class MainActivity : ComponentActivity() {
@@ -143,6 +145,7 @@ private fun RemoteApp(
     var toast by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     var selectedPcId by remember { mutableStateOf<String?>(null) }
+    var connectionDetailsFromControl by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<PcState?>(null) }
     var lockSettingsPc by remember { mutableStateOf<PcState?>(null) }
     var lockSettings by remember { mutableStateOf<PcLockSettings?>(null) }
@@ -329,7 +332,11 @@ private fun RemoteApp(
     }
 
     BackHandler(enabled = screen != Screen.HOME) {
-        screen = if (screen == Screen.LOCK_SETTINGS || screen == Screen.TASKS) Screen.CONTROL else Screen.HOME
+        screen = when (screen) {
+            Screen.LOCK_SETTINGS, Screen.TASKS -> Screen.CONTROL
+            Screen.CONNECTION_DETAILS -> if (connectionDetailsFromControl) Screen.CONTROL else Screen.HOME
+            else -> Screen.HOME
+        }
         toast = null
     }
 
@@ -431,8 +438,21 @@ private fun RemoteApp(
                 TaskManagerScreen(
                     api = api,
                     profile = pc.profile,
-                    onBack = { screen = Screen.CONTROL },
+                    onBack = { screen = if (connectionDetailsFromControl) Screen.CONTROL else Screen.HOME },
                     onToast = { toast = it },
+                )
+            }
+        }
+
+        Screen.CONNECTION_DETAILS -> {
+            val pc = pcs.firstOrNull { it.profile.id == selectedPcId }
+            if (pc == null) {
+                ControlErrorScreen("This PC is no longer paired.") { screen = Screen.HOME }
+            } else {
+                ConnectionDetailsScreen(
+                    pc = pc,
+                    onBack = { screen = Screen.CONTROL },
+                    onRefresh = { refresh(pc.profile) },
                 )
             }
         }
@@ -488,7 +508,11 @@ private fun RemoteApp(
                 lockSettingsLoadVersion++
                 screen = Screen.CONTROL
             },
-            onDetails = { toast = "${it.profile.endpoint.removePrefix("https://")} · paired ${shortDate(it.profile.pairedAt)}" },
+            onDetails = {
+                selectedPcId = it.profile.id
+                connectionDetailsFromControl = false
+                screen = Screen.CONNECTION_DETAILS
+            },
             onRename = { renaming = it },
             onRemove = { pc -> removePc(pc.profile) },
         )
@@ -512,7 +536,7 @@ private fun RemoteApp(
                     onLockSettings = { screen = Screen.LOCK_SETTINGS },
                     onTaskManager = { screen = Screen.TASKS },
                     onRefresh = { refresh(pc.profile) },
-                    onDetails = { toast = "${pc.profile.endpoint.removePrefix("https://")} · certificate ${pc.profile.certificateSha256.take(16)}…" },
+                    onDetails = { connectionDetailsFromControl = true; screen = Screen.CONNECTION_DETAILS },
                 )
             }
         }
@@ -631,6 +655,7 @@ private fun FreezeOptionDropdown(
                 containerColor = MaterialTheme.colorScheme.surface,
                 tonalElevation = 0.dp,
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                shape = RoundedCornerShape(16.dp),
             ) {
                 options.forEach { option ->
                     DropdownMenuItem(
@@ -774,6 +799,7 @@ private fun PcCard(
                         containerColor = colors.surface,
                         tonalElevation = 0.dp,
                         border = BorderStroke(1.dp, colors.outlineVariant),
+                        shape = RoundedCornerShape(16.dp),
                     ) {
                         DropdownMenuItem(text = { Text("Connection details") }, onClick = { menu = false; onDetails() })
                         DropdownMenuItem(text = { Text("Rename") }, onClick = { menu = false; onRename() })
@@ -911,7 +937,7 @@ private fun PcControlScreen(
                     Text(if (active) "Unlock" else "Freeze", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                     if (!active && lockOptions != null) {
                         Spacer(Modifier.height(4.dp))
-                        Text("${lockOptions.mode} · $durationLabel", fontSize = 12.sp)
+                        Text("Mode: ${lockOptions.mode}  |  Duration: $durationLabel", fontSize = 12.sp)
                     }
                 }
             }
@@ -922,7 +948,7 @@ private fun PcControlScreen(
                     pc.error != null -> "${pc.error}. Offline does not mean unlocked."
                     !active && lockOptionsLoading -> "Loading this PC’s saved lock options."
                     !active && lockOptions == null -> "Could not load this PC’s lock options. Open Lock options to retry before freezing."
-                    active && remaining > 0 -> "${pc.snapshot?.mode ?: "Freeze"} · ${formatTime(remaining)}"
+                    active && remaining > 0 -> "${pc.snapshot?.mode ?: "Freeze"} mode, ${formatTime(remaining)} remaining"
                     active && !pc.snapshot!!.remoteReleaseAllowed -> "Release is disabled by this PC’s lock policy."
                     active -> "This PC reports an active freeze."
                     durationSeconds == 0 -> "No timer. The PC’s lock options set this freeze to continue until you unlock."
@@ -948,6 +974,19 @@ private fun PcControlScreen(
                         Modifier.fillMaxWidth().clickable(onClick = onTaskManager).padding(horizontal = 16.dp, vertical = 15.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
+                        Icon(Icons.Default.Settings, null, tint = colors.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text("Lock options", fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+                            Text("Mode, duration, safety and lock-screen settings", color = colors.onSurfaceVariant, fontSize = 12.sp)
+                        }
+                        Icon(Icons.Default.ArrowForward, null, tint = colors.onSurfaceVariant)
+                    }
+                    HorizontalDivider(color = colors.outlineVariant, modifier = Modifier.padding(horizontal = 16.dp))
+                    Row(
+                        Modifier.fillMaxWidth().clickable(onClick = onTaskManager).padding(horizontal = 16.dp, vertical = 15.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Icon(Icons.Default.Memory, null, tint = colors.primary)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -958,20 +997,121 @@ private fun PcControlScreen(
                     }
                     HorizontalDivider(color = colors.outlineVariant, modifier = Modifier.padding(horizontal = 16.dp))
                     Row(
-                        Modifier.fillMaxWidth().clickable(onClick = onLockSettings).padding(horizontal = 16.dp, vertical = 15.dp),
+                        Modifier.fillMaxWidth().clickable(onClick = onDetails).padding(horizontal = 16.dp, vertical = 15.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Default.Settings, null, tint = colors.primary)
+                        Icon(Icons.Default.Wifi, null, tint = colors.primary)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Lock options", fontWeight = FontWeight.SemiBold, color = colors.onSurface)
-                            Text("Mode, duration, safety and lock-screen settings", color = colors.onSurfaceVariant, fontSize = 12.sp)
+                            Text("Connection details", fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+                            Text("Address, security, pairing and last contact", color = colors.onSurfaceVariant, fontSize = 12.sp)
                         }
                         Icon(Icons.Default.ArrowForward, null, tint = colors.onSurfaceVariant)
                     }
                 }
             }
-            TextButton(onClick = onDetails, modifier = Modifier.padding(top = 4.dp)) { Text("Connection details") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionDetailsScreen(
+    pc: PcState,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    val endpoint = runCatching { java.net.URI(pc.profile.endpoint) }.getOrNull()
+    val fingerprint = pc.profile.certificateSha256.chunked(2).joinToString(":").uppercase()
+    Scaffold(containerColor = colors.background) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp, vertical = 10.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                Column(Modifier.weight(1f)) {
+                    Text("Connection details", fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = colors.onSurface)
+                    Text(pc.profile.name, fontSize = 12.sp, color = colors.onSurfaceVariant)
+                }
+                IconButton(onClick = onRefresh, enabled = !pc.checking) {
+                    Icon(Icons.Default.Refresh, "Refresh connection status")
+                }
+            }
+            Column(
+                Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(top = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Surface(
+                    color = if (pc.error == null && !pc.checking) colors.tertiaryContainer else colors.surfaceVariant,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, colors.outlineVariant),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (pc.checking) Icons.Default.Sync else if (pc.error != null) Icons.Default.WifiOff else Icons.Default.Wifi,
+                            null,
+                            tint = if (pc.checking || pc.error != null) colors.onSurfaceVariant else colors.tertiary,
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                when { pc.checking -> "Checking connection"; pc.error != null -> "Not reachable"; else -> "Connected securely" },
+                                fontWeight = FontWeight.SemiBold,
+                                color = colors.onSurface,
+                            )
+                            Text(
+                                pc.error ?: pc.snapshot?.let { "PC reports ${it.phase.lowercase()} status" } ?: "Waiting for the PC status response",
+                                fontSize = 12.sp,
+                                color = colors.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                ConnectionInfoGroup(title = "Network", rows = listOf(
+                    "Address" to (endpoint?.host ?: pc.profile.endpoint),
+                    "Port" to (endpoint?.port?.takeIf { it >= 0 }?.toString() ?: "Default"),
+                    "Transport" to (endpoint?.scheme?.uppercase() ?: "HTTPS"),
+                    "Connection" to "Direct over your local network",
+                ))
+                ConnectionInfoGroup(title = "Pairing", rows = listOf(
+                    "Paired on" to shortDate(pc.profile.pairedAt),
+                    "Last successful contact" to (pc.profile.lastSeenAt?.let(::shortDate) ?: "No successful contact yet"),
+                    "Paired PC" to pc.profile.name,
+                    "Profile ID" to pc.profile.id,
+                ))
+                ConnectionInfoGroup(title = "Certificate", rows = listOf(
+                    "Identity check" to "Pinned certificate SHA-256",
+                    "SHA-256 fingerprint" to fingerprint.ifBlank { "Unavailable" },
+                ))
+                if (pc.error != null) {
+                    Text(pc.error, color = colors.error, fontSize = 13.sp, lineHeight = 19.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionInfoGroup(title: String, rows: List<Pair<String, String>>) {
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = colors.onSurface)
+        Surface(
+            color = colors.surface,
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, colors.outlineVariant),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column {
+                rows.forEachIndexed { index, (label, value) ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 15.dp, vertical = 11.dp)) {
+                        Text(label, fontSize = 11.sp, color = colors.onSurfaceVariant)
+                        Text(value, fontSize = 13.sp, color = colors.onSurface, lineHeight = 18.sp)
+                    }
+                    if (index != rows.lastIndex) HorizontalDivider(color = colors.outlineVariant)
+                }
             }
         }
     }

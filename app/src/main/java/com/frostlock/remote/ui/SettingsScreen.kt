@@ -1,5 +1,6 @@
 package com.frostlock.remote.ui
 
+import android.widget.ImageView
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
@@ -45,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
@@ -150,8 +152,20 @@ fun SettingsScreen(
             item {
                 SectionLabel("About")
                 SettingsCard {
-                    Text("FrostLock Remote", fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = colors.onSurface)
-                    Text("Version $versionName", color = colors.onSurfaceVariant, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        AndroidView(
+                            factory = { context -> ImageView(context).apply {
+                                setImageResource(com.frostlock.remote.R.mipmap.ic_launcher)
+                                contentDescription = "FrostLock icon"
+                            } },
+                            modifier = Modifier.size(46.dp),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("FrostLock Remote", fontWeight = FontWeight.SemiBold, fontSize = 18.sp, color = colors.onSurface)
+                            Text("Version $versionName", color = colors.onSurfaceVariant, fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp))
+                        }
+                    }
                     Spacer(Modifier.height(14.dp))
                     androidx.compose.material3.HorizontalDivider(color = colors.outlineVariant)
                     Spacer(Modifier.height(14.dp))
@@ -226,6 +240,7 @@ private fun ThemeDropdown(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
             containerColor = colors.surface,
             tonalElevation = 0.dp,
             border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant),
+            shape = RoundedCornerShape(16.dp),
         ) {
             ThemeMode.entries.forEach { mode ->
                 DropdownMenuItem(

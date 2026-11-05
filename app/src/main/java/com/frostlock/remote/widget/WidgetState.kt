@@ -29,8 +29,8 @@ data class WidgetState(
             error != null -> error
             checking -> "Checking your PC…"
             active && !remoteReleaseAllowed -> "Release is blocked by this PC"
-            active && remainingSeconds > 0 -> "${mode ?: "Freeze"} · ${formatRemaining(remainingSeconds)}"
-            active -> "${mode ?: "Freeze"} · freeze active"
+            active && remainingSeconds > 0 -> "${mode ?: "Freeze"} mode, ${formatRemaining(remainingSeconds)}"
+            active -> "${mode ?: "Freeze"} mode is active"
             else -> "Tap to freeze"
         }
 }

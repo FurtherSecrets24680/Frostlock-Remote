@@ -607,7 +607,7 @@ private fun MachineCard(
                     tint = TaskPalette.green,
                     label = "Processes",
                     value = snapshot?.processCount?.toString() ?: "—",
-                    caption = snapshot?.let { "${it.appCount} apps · ${it.connectionCount} sockets" } ?: "Windows tasks",
+                    caption = snapshot?.let { "${it.appCount} apps, ${it.connectionCount} sockets" } ?: "Windows tasks",
                     values = history.processes,
                     modifier = Modifier.weight(1f),
                 )
@@ -619,7 +619,7 @@ private fun MachineCard(
                         "${formatBytes(it.networkReceiveBytesPerSec + it.networkSendBytesPerSec)}/s"
                     } ?: "—",
                     caption = snapshot?.let {
-                        "↓ ${formatBytes(it.networkReceiveBytesPerSec)}/s · ↑ ${formatBytes(it.networkSendBytesPerSec)}/s"
+                        "↓ ${formatBytes(it.networkReceiveBytesPerSec)}/s  ↑ ${formatBytes(it.networkSendBytesPerSec)}/s"
                     } ?: "whole PC",
                     values = history.network,
                     modifier = Modifier.weight(1f),
@@ -721,8 +721,8 @@ private fun TaskSearchField(
                 Box(Modifier.weight(1f)) {
                     if (value.isEmpty()) {
                         Text(
-                            "Search name, publisher, or path",
-                            fontSize = 15.sp,
+                            "Search processes",
+                            fontSize = 14.sp,
                             color = TaskPalette.faint,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -804,7 +804,7 @@ private fun ManageProcessesCard(count: Int?, onClick: () -> Unit) {
                 color = TaskPalette.text,
             )
             Text(
-                count?.let { "$it running · inspect or end a task" } ?: "View, inspect, or end running tasks",
+                count?.let { "$it running. Inspect or end a task." } ?: "View, inspect, or end running tasks",
                 fontSize = 12.sp,
                 color = TaskPalette.muted,
             )
@@ -998,37 +998,48 @@ private fun TaskRow(
                         )
                     }
                 }
-                Text(
-                    "PID ${task.pid} · ${taskKind(task)}",
-                    fontSize = 11.sp,
-                    color = TaskPalette.muted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    buildString {
-                        append("Memory  ${formatBytes(task.workingSetBytes)}")
-                        if (abs(disk) >= 1024) append("    Disk  ${formatBytes(disk)}/s")
-                        if (task.connectionCount > 0) append("    Network  ${task.connectionCount} sockets")
-                    },
-                    fontSize = 11.sp,
-                    color = TaskPalette.muted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Spacer(Modifier.height(5.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    ProcessIdentityChip("PID ${task.pid}", TaskPalette.blue)
+                    ProcessIdentityChip(if (task.hasWindow) "App" else "Background", if (task.hasWindow) TaskPalette.green else TaskPalette.orange)
+                }
+                Spacer(Modifier.height(7.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ProcessMetric(Icons.Default.Speed, TaskPalette.blue, "CPU", String.format(Locale.US, "%.1f%%", task.cpuPercent))
+                    ProcessMetric(Icons.Default.Memory, TaskPalette.purple, "Memory", formatBytes(task.workingSetBytes))
+                    ProcessMetric(Icons.Default.Language, TaskPalette.orange, "Connections", task.connectionCount.toString())
+                    if (abs(disk) >= 1024) ProcessMetric(Icons.Default.Storage, TaskPalette.green, "Disk", "${formatBytes(disk)}/s")
+                }
             }
             Spacer(Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    String.format(Locale.US, "%.1f%%", task.cpuPercent),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (task.cpuPercent >= 20) TaskPalette.blue else TaskPalette.text,
-                )
-                Text("CPU", fontSize = 10.sp, color = TaskPalette.faint)
-            }
         }
+    }
+}
+
+@Composable
+private fun ProcessIdentityChip(text: String, color: Color) {
+    Text(
+        text,
+        modifier = Modifier.clip(RoundedCornerShape(6.dp))
+            .background(color.copy(alpha = 0.10f))
+            .border(1.dp, color.copy(alpha = 0.28f), RoundedCornerShape(6.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Medium,
+        color = color,
+        maxLines = 1,
+    )
+}
+
+@Composable
+private fun ProcessMetric(icon: ImageVector, tint: Color, label: String, value: String) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Icon(icon, "$label: $value", tint = tint, modifier = Modifier.size(13.dp))
+        Text(value, fontSize = 10.sp, color = TaskPalette.text, maxLines = 1, overflow = TextOverflow.Clip)
     }
 }
 
@@ -1077,7 +1088,7 @@ private fun TaskDetailDialog(
                             )
                             Spacer(Modifier.height(3.dp))
                             Text(
-                                "PID ${task.pid} · ${task.name}",
+                                "PID ${task.pid}    ${task.name}",
                                 fontSize = 12.sp,
                                 color = TaskPalette.muted,
                                 maxLines = 1,
@@ -1086,12 +1097,13 @@ private fun TaskDetailDialog(
                         }
                         Spacer(Modifier.width(8.dp))
                         CircleGlassButton(onClick = onDismiss, size = 36.dp) {
-                            Icon(
-                                Icons.Default.Close,
-                                "Close details",
-                                tint = TaskPalette.muted,
-                                modifier = Modifier.size(17.dp),
-                            )
+                            Box(
+                                Modifier.fillMaxSize().clip(CircleShape)
+                                    .background(TaskPalette.red.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Default.Close, "Close details", tint = TaskPalette.red, modifier = Modifier.size(17.dp))
+                            }
                         }
                     }
 
@@ -1148,8 +1160,8 @@ private fun TaskDetailDialog(
                                 tint = TaskPalette.green,
                                 label = "Disk",
                                 value = "${formatBytes(task.diskReadBytesPerSec + task.diskWriteBytesPerSec)}/s",
-                                caption = "R ${formatBytes(task.diskReadBytesPerSec.toLong())}/s · " +
-                                    "W ${formatBytes(task.diskWriteBytesPerSec.toLong())}/s",
+                                caption = "Read ${formatBytes(task.diskReadBytesPerSec.toLong())}/s  |  " +
+                                    "Write ${formatBytes(task.diskWriteBytesPerSec.toLong())}/s",
                                 values = history.disk,
                                 modifier = Modifier.weight(1f),
                             )
@@ -1237,13 +1249,7 @@ private fun TaskDetailDialog(
                                 body = "This is a Java runtime process (OpenJDK). It may be running an " +
                                     "application or background service.",
                             )
-                            else -> DetailNote(
-                                icon = Icons.Default.Info,
-                                tint = TaskPalette.blue,
-                                title = "Live telemetry",
-                                body = "Metrics are sampled over the last 350 ms on the PC. Network shows " +
-                                    "active IPv4/IPv6 TCP and UDP sockets.",
-                            )
+                        else -> Unit
                         }
                         Spacer(Modifier.height(8.dp))
                         Text(
@@ -1258,19 +1264,14 @@ private fun TaskDetailDialog(
 
                     Spacer(Modifier.height(12.dp))
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SecondaryButton(
-                            text = "Close",
-                            icon = Icons.Default.Close,
-                            onClick = onDismiss,
-                            modifier = Modifier.weight(1f),
-                        )
+                    Row {
                         PrimaryButton(
                             text = if (task.protected) "Protected" else "End task",
                             icon = if (task.protected) Icons.Default.Lock else Icons.Default.DeleteOutline,
                             enabled = !task.protected,
                             onClick = onEnd,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
+                            destructive = true,
                         )
                     }
                 }
@@ -1327,7 +1328,8 @@ private fun DetailMetricCard(
 @Composable
 private fun DetailLocationRow(path: String?, onCopy: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(TaskPalette.cardDeep)
+            .border(1.dp, TaskPalette.border, RoundedCornerShape(10.dp)).padding(10.dp),
         verticalAlignment = Alignment.Top,
     ) {
         IconBadge(Icons.Default.FolderOpen, TaskPalette.blue, 34.dp)
@@ -1373,7 +1375,8 @@ private fun DetailInfoRow(
     value: String,
 ) {
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(TaskPalette.cardDeep)
+            .border(1.dp, TaskPalette.border, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconBadge(icon, tint, 34.dp)
@@ -1445,7 +1448,7 @@ private fun EndTaskDialog(
                     enabled = !busy,
                     onClick = { onEnd(false) },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = TaskPalette.blueDeep,
+                        containerColor = TaskPalette.red,
                         contentColor = Color.White,
                     ),
                 ) {
@@ -1514,13 +1517,13 @@ private fun StartTaskDialog(
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                "Start a program",
+                                "Run",
                                 fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = TaskPalette.text,
                             )
                             Text(
-                                "on ${profile.name}",
+                                profile.name,
                                 fontSize = 11.sp,
                                 color = TaskPalette.muted,
                             )
@@ -1562,20 +1565,17 @@ private fun StartTaskDialog(
                     OutlinedTextField(
                         value = directory,
                         onValueChange = { directory = it.take(4096) },
-                        label = { Text("Working directory (optional)") },
+                        label = { Text("Start in (optional)") },
                         singleLine = true,
                         shape = RoundedCornerShape(14.dp),
                         colors = fieldColors,
                         modifier = Modifier.fillMaxWidth(),
                     )
-
-                    Spacer(Modifier.height(12.dp))
-                    DetailNote(
-                        icon = Icons.Default.Info,
-                        tint = TaskPalette.blue,
-                        title = "Runs on the PC",
-                        body = "Use a full path that exists on the PC. Phones may start .exe, .bat, .cmd, " +
-                            "and .com programs in your signed-in Windows session.",
+                    Text(
+                        "Runs on the PC in your signed-in Windows session.",
+                        fontSize = 12.sp,
+                        color = TaskPalette.muted,
+                        modifier = Modifier.padding(top = 4.dp),
                     )
 
                     Spacer(Modifier.height(16.dp))
@@ -1588,7 +1588,7 @@ private fun StartTaskDialog(
                             modifier = Modifier.weight(1f),
                         )
                         PrimaryButton(
-                            text = if (busy) "Starting…" else "Start",
+                            text = if (busy) "Running…" else "Run",
                             icon = Icons.Default.PlayArrow,
                             enabled = path.isNotBlank() && !busy,
                             onClick = {
@@ -1614,13 +1614,20 @@ private fun PrimaryButton(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    destructive: Boolean = false,
 ) {
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier.height(50.dp)
             .clip(shape)
             .background(
-                SolidColor(if (enabled) TaskPalette.blueDeep else MaterialTheme.colorScheme.surfaceVariant),
+                SolidColor(
+                    when {
+                        !enabled -> MaterialTheme.colorScheme.surfaceVariant
+                        destructive -> TaskPalette.red
+                        else -> TaskPalette.blueDeep
+                    },
+                ),
             )
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,

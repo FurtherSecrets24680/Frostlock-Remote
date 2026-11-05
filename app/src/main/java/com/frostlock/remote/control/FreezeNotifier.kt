@@ -49,7 +49,7 @@ internal object FreezeNotifier {
         val details = listOfNotNull(
             snapshot.mode?.let { "$it mode" },
             if (!snapshot.remoteReleaseAllowed) "release blocked by the PC" else null,
-        ).joinToString(" · ").ifBlank { "Frozen by FrostLock" }
+        ).joinToString(", ").ifBlank { "Frozen by FrostLock" }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_lock)

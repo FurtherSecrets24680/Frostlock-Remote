@@ -189,6 +189,7 @@ private fun Selection(title: String, selected: String, choices: List<String>, on
                 containerColor = MaterialTheme.colorScheme.surface,
                 tonalElevation = 0.dp,
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                shape = RoundedCornerShape(16.dp),
             ) {
                 choices.forEach { choice ->
                     DropdownMenuItem(text = { Text(choice) }, onClick = { expanded = false; onSelect(choice) })

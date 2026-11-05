@@ -272,7 +272,7 @@ private fun UnlockBackdrop() {
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "Confirm unlock",
+                    androidx.compose.ui.res.stringResource(com.frostlock.remote.R.string.confirm_unlock_title),
                     color = colors.onSurface,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,

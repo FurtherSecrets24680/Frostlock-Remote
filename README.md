@@ -16,9 +16,9 @@ FrostLock Remote lets you check and control a paired Windows PC from your Androi
 - Includes a task manager for each PC: live CPU, memory, disk, and network charts, a searchable process list, process details, end/force-end, restart, start-task, and a run-command box.
 - Uses the mode and duration saved in that PC’s **Lock options**. Change those options from the PC page; the app loads them from Windows before enabling a new freeze.
 - Applies the PC’s safety limit and release policy. An offline PC has an unknown state. Do not treat it as unfrozen.
-- Pairs by scanning a QR code or entering its invite text. Camera access is optional; manual entry does not need it.
+- Pairs by scanning a QR code or entering the invite text by hand; camera access is optional.
 
-The phone can start Gentle, Strict, or configured PIN freezes. Hard and USB Key modes remain PC-only. A phone can release a freeze only when the PC permits remote release. Remote release for PIN mode stays off unless the PC owner enables it.
+The phone can start Gentle, Strict, or configured PIN freezes. Hard and USB key modes remain PC-only. A phone can release a freeze only when the PC permits remote release. Remote release for PIN mode stays off unless the PC owner enables it.
 
 ## Pair your phone
 
@@ -69,7 +69,7 @@ Starting a freeze never needs confirmation. Unfreezing does, because an unattend
 
 Every unfreeze opens the same confirmation screen, whether it starts in the app, the widget, the tile, or the notification. It asks for fingerprint or face with the device PIN, pattern, or password as a fallback. If the phone has a screen lock but no biometric, it asks for the device credential. If the phone has no screen lock at all, there is nothing to prove, so the app sends the unfreeze directly.
 
-The app itself does not ask for authentication when you open it. The app requests a scan only when you unfreeze. The confirmation also runs in its own task, so tapping a widget or tile does not pull the full app forward behind the prompt.
+The app does not ask for authentication when you open it. It requests a scan only when you unfreeze. The confirmation also runs in its own task, so tapping a widget or tile does not pull the full app forward behind the prompt.
 
 FrostLock never stores or sees your biometrics or PIN; Android's system prompt checks them and only tells the app "confirmed" or "not confirmed".
 
@@ -83,7 +83,7 @@ The app checks status when it opens, when you refresh, when the widget is tapped
 
 ## Security and stored data
 
-- The app connects directly to the Windows PC over HTTPS. It pins the SHA-256 fingerprint of the certificate delivered during pairing and rejects redirects and cleartext traffic. The **Connection details** screen shows the pinned fingerprint so you can compare it with the PC when you want to.
+- The app connects directly to the Windows PC over HTTPS. It pins the SHA-256 fingerprint of the certificate delivered during pairing and rejects redirects and cleartext traffic. The **Connection details** screen shows the pinned fingerprint so you can compare it with the PC.
 - Each pairing gets an ECDSA signing key in Android Keystore. The private key is non-exportable; the app signs authenticated requests with it.
 - The app stores paired PC details locally and disables Android backup for app data. Removing a PC deletes its local key and pairing record. To remove a lost or retired phone completely, also revoke it in FrostLock on Windows.
 - The Windows PC approves each pairing and decides which lock modes, remote releases, and task actions it permits. Phone task control is off by default, and you can turn it off at any time.

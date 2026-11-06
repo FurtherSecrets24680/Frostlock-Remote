@@ -18,10 +18,6 @@ import java.net.NoRouteToHostException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
-/**
- * What the home screen widget, the Quick Settings tile and notifications have in common:
- * talking to a paired PC without an app screen in front of the user.
- */
 internal object RemoteControl {
 
     /** Background work for surfaces with no lifecycle of their own. */
@@ -50,14 +46,6 @@ internal object RemoteControl {
     suspend fun unlock(profile: PcProfile): FreezeSnapshot =
         withContext(Dispatchers.IO) { api.unlock(profile) }
 
-    /**
-     * Records what a PC reported so every surface agrees: the freeze notification is
-     * posted or cleared, the tile's cached state is refreshed, and the tile is asked
-     * to redraw. Safe to call after any status, freeze or unlock.
-     *
-     * [refreshTile] is false when the caller is the tile itself: asking it to redraw
-     * from inside its own refresh would make it refresh again, forever.
-     */
     fun reflect(
         context: Context,
         profile: PcProfile,

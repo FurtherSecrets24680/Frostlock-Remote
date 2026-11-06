@@ -13,14 +13,6 @@ import com.frostlock.remote.R
 import com.frostlock.remote.data.PcProfile
 import kotlinx.coroutines.launch
 
-/**
- * A Quick Settings tile for the remembered PC: tapping it freezes that PC, or routes
- * an unlock through the same biometric gate the rest of the app uses.
- *
- * The shade refreshes the tile's cached state every time it opens. An unlock is started
- * synchronously from [onClick] because launching an activity is only allowed while the
- * service is still bound; the gate verifies the PC's real state before asking anything.
- */
 class FrostLockTileService : TileService() {
 
     @Volatile
@@ -45,14 +37,11 @@ class FrostLockTileService : TileService() {
         val store = ControlStore(this)
         val profileId = store.lastProfileId()
         if (profileId == null) {
-            // Nothing bound yet: send the user to the app to pair or choose a PC.
             launchNow(Intent(this, MainActivity::class.java))
             return
         }
 
         if (store.active(profileId)) {
-            // Start the gate while the service can still launch an activity. It checks
-            // the PC before prompting, so a stale "active" here is not a blind unlock.
             launchNow(ConfirmUnlockActivity.intent(this, profileId))
             return
         }
@@ -100,7 +89,6 @@ class FrostLockTileService : TileService() {
         try {
             RemoteControl.reflect(context, profile, RemoteControl.status(profile), refreshTile = false)
         } catch (_: Throwable) {
-            // Keep the cached state; the tile stays tappable so a tap can retry.
         }
         updateOnMain()
     }

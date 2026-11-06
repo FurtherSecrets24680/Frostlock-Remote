@@ -13,18 +13,9 @@ import com.frostlock.remote.control.ConfirmUnlockActivity
 import com.frostlock.remote.control.RemoteControl
 import kotlinx.coroutines.launch
 
-/**
- * Home-screen widget mirroring the big freeze button in the app: one circle that
- * freezes the bound PC, or releases it while a freeze is active.
- *
- * One widget controls one paired PC. The launcher runs [WidgetConfigureActivity]
- * when the widget is added so the PC can be picked. Unlocks are handed to
- * [ConfirmUnlockActivity] so the widget cannot bypass the phone's confirmation.
- */
 class FrostLockWidget : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
-        // Draw the cached state immediately, then refresh from the PC in the background.
         appWidgetIds.forEach { widgetId ->
             renderWidget(context, manager, widgetId, cachedState(context, widgetId))
         }
@@ -37,8 +28,6 @@ class FrostLockWidget : AppWidgetProvider() {
         appWidgetId: Int,
         newOptions: android.os.Bundle,
     ) {
-        // Keep the drawing in step with the size the launcher is giving us. Compact
-        // layouts are used below three cells so the widget stays legible when resized.
         renderWidget(context, manager, appWidgetId, cachedState(context, appWidgetId))
         refresh(context, intArrayOf(appWidgetId))
     }
@@ -57,8 +46,6 @@ class FrostLockWidget : AppWidgetProvider() {
         val widgetId = intent.getIntExtra(EXTRA_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
         if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
 
-        // A broadcast receiver gets roughly ten seconds; keep the handle alive until
-        // the network round trips finish, then let the system reclaim the process.
         val pending = goAsync()
         RemoteControl.scope.launch {
             try {
@@ -110,7 +97,6 @@ private suspend fun handleTap(context: Context, widgetId: Int) {
     val current = store.state(widgetId)
     if (current.busy) return
 
-    // Offline or never checked: a tap means "try again", not "guess and act".
     if (!current.known || current.error != null) {
         store.saveState(widgetId, current.copy(busy = true))
         renderWidget(context, manager, widgetId, current.copy(busy = true).toWidgetState(true))
@@ -119,14 +105,12 @@ private suspend fun handleTap(context: Context, widgetId: Int) {
     }
 
     val profile = RemoteControl.profile(context, profileId) ?: run {
-        // The PC was removed on the phone; make the widget point at setup again.
         store.unbind(widgetId)
         renderWidget(context, manager, widgetId, WidgetState(configured = false))
         return
     }
 
     if (current.active) {
-        // Unlocking is gated: the shared screen asks the phone to confirm first.
         if (!current.remoteReleaseAllowed) {
             RemoteControl.toast(context, "Release is blocked by this PC.")
             return

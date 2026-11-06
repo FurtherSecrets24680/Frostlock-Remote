@@ -118,7 +118,6 @@ class MainActivity : ComponentActivity() {
             val loaded by preferences.flow.collectAsState(initial = null)
             val prefs = loaded
             if (prefs == null) {
-                // Avoid a light-to-dark flash while the first preference read completes.
                 FrostTheme(ThemeMode.SYSTEM) {
                     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background))
                 }
@@ -183,8 +182,6 @@ private fun RemoteApp(
                     val updated = profile.copy(lastSeenAt = System.currentTimeMillis())
                     withContext(Dispatchers.IO) { store.save(updated) }
                     pcs = pcs.map { if (it.profile.id == profile.id) PcState(updated, snapshot, false) else it }
-                    // Keep the freeze notification honest, but only for the PC the
-                    // notification speaks about so two PCs cannot flip it back and forth.
                     if (ControlStore(context).defaultProfileId() == profile.id) {
                         RemoteControl.reflect(context, updated, snapshot)
                     }
@@ -230,8 +227,6 @@ private fun RemoteApp(
             toast = "${pc.profile.name} is offline. Its state is unknown."
             return
         }
-        // Unlocking always goes through the shared confirmation screen, which asks the
-        // phone to verify it is the owner before releasing the freeze.
         unlockLauncher.launch(ConfirmUnlockActivity.intent(context, pc.profile.id))
     }
 
@@ -253,7 +248,6 @@ private fun RemoteApp(
     ) { }
 
     LaunchedEffect(Unit) {
-        // Android 13+ needs a runtime grant before the freeze notification can appear.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -421,7 +415,6 @@ private fun RemoteApp(
             onRefresh = { pcs.forEach { refresh(it.profile) } },
             onOpen = { pc ->
                 selectedPcId = pc.profile.id
-                // Opening a PC makes it the target for the tile and notifications.
                 ControlStore(context).setDefaultProfileId(pc.profile.id)
                 lockSettings = null
                 lockSettingsPc = pc

@@ -43,10 +43,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * A settings row with a compact select pill on the right. The pill keeps its natural
- * width instead of stretching across the card, matching the rest of the app's settings.
- */
 @Composable
 internal fun <T> CompactDropdown(
     title: String,

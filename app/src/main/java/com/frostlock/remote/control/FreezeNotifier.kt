@@ -16,11 +16,6 @@ import com.frostlock.remote.R
 import com.frostlock.remote.data.FreezeSnapshot
 import com.frostlock.remote.data.PcProfile
 
-/**
- * Keeps one ongoing notification while a freeze is active, with an inline Unlock action
- * and a system-drawn countdown, so a freeze started from anywhere can be released
- * without hunting for the app.
- */
 internal object FreezeNotifier {
     private const val CHANNEL_ID = "freeze"
     private const val NOTIFICATION_ID = 1101
@@ -64,7 +59,6 @@ internal object FreezeNotifier {
 
         val remaining = snapshot.remainingSeconds ?: 0L
         if (remaining > 0) {
-            // The system renders the countdown, so no periodic refresh is needed.
             builder.setWhen(System.currentTimeMillis() + remaining * 1000L)
             builder.setUsesChronometer(true)
             builder.setChronometerCountDown(true)

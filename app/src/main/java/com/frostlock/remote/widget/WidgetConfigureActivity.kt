@@ -51,10 +51,6 @@ import com.frostlock.remote.ui.FrostTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * Runs when a FrostLock widget is added, so the widget can be bound to a paired PC.
- * The launcher discards the widget unless this returns RESULT_OK.
- */
 class WidgetConfigureActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {

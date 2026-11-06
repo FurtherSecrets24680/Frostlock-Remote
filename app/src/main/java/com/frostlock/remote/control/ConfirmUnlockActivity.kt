@@ -45,17 +45,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/**
- * The single confirmation screen every remote unlock goes through, so the app, the
- * widget, the Quick Settings tile and the freeze notification all ask the same question.
- *
- * It is translucent on purpose: the system biometric prompt is the visible part, and
- * this activity only exists to be a host that can show it. It is an
- * [AppCompatActivity] because on API 26-28 the biometric library renders its fallback
- * fingerprint dialog with `androidx.appcompat.app.AlertDialog`, which throws
- * `IllegalStateException` unless the host theme is an AppCompat theme. The unlock
- * itself runs here, and the result is reported back so the caller can refresh.
- */
 class ConfirmUnlockActivity : AppCompatActivity() {
 
     private var profile: PcProfile? = null
@@ -81,7 +70,6 @@ class ConfirmUnlockActivity : AppCompatActivity() {
 
     override fun onPostResume() {
         super.onPostResume()
-        // The prompt requires a resumed activity; a fast profile read can beat this.
         maybePrompt()
     }
 
@@ -110,9 +98,6 @@ class ConfirmUnlockActivity : AppCompatActivity() {
         val pc = profile ?: return
         started = true
 
-        // Confirm there is still a freeze to release before asking the phone to prove
-        // who is holding it. A stale tap from the tile or widget ends here instead of
-        // unlocking something that is already open.
         lifecycleScope.launch {
             val result = runCatching { RemoteControl.status(pc) }
             val snapshot = result.getOrNull()
@@ -131,7 +116,6 @@ class ConfirmUnlockActivity : AppCompatActivity() {
                 finishWith(false)
                 return@launch
             }
-            // The user may have left while the check ran; never prompt from the background.
             if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                 finishWith(false)
                 return@launch
@@ -175,7 +159,6 @@ class ConfirmUnlockActivity : AppCompatActivity() {
             .setSubtitle("Confirm it is you to release the freeze on ${pc.name}.")
             .setConfirmationRequired(false)
             .setAllowedAuthenticators(authenticators)
-        // A negative button is not allowed when the device credential is offered.
         if (cancelButton) builder.setNegativeButtonText("Cancel")
 
         val prompt = BiometricPrompt(
@@ -195,7 +178,6 @@ class ConfirmUnlockActivity : AppCompatActivity() {
                 }
 
                 override fun onAuthenticationFailed() {
-                    // A single unreadable finger; keep the prompt up so the user can retry.
                 }
             },
         )

@@ -1,10 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Used by the shared unlock confirmation screen, which is a translucent
-         window hosting the system biometric prompt. The parent must be an
-         AppCompat theme: on API 26-28 the biometric fallback renders its
-         fingerprint dialog with androidx.appcompat.app.AlertDialog, which
-         throws without one. -->
+
     <style name="Theme.FrostLock.Transparent" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>

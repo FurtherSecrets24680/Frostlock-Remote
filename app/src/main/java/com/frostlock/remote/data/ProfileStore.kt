@@ -36,8 +36,6 @@ class ProfileStore(private val context: Context) {
 
     private fun allFrom(raw: String?): List<PcProfile> {
         val array = JSONArray(raw ?: "[]")
-        // Older builds could pair a PC over Bluetooth LE. Those profiles point at a
-        // ble:// service and cannot work over LAN, so hide them instead of failing.
         return (0 until array.length()).map { array.getJSONObject(it).toProfile() }
             .filter { it.endpoint.startsWith("https://") }
     }

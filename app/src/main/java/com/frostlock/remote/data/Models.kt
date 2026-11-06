@@ -2,10 +2,6 @@ package com.frostlock.remote.data
 
 import org.json.JSONObject
 
-/**
- * org.json turns an explicit JSON null into the literal string "null" for optString.
- * Nullable protocol fields must stay absent instead of leaking that text into the UI.
- */
 internal fun JSONObject.stringOrNull(name: String): String? {
     if (!has(name) || isNull(name)) return null
     return optString(name).takeIf(String::isNotBlank)

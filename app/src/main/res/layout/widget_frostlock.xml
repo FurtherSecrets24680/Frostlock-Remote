@@ -5,8 +5,6 @@
     android:layout_height="match_parent"
     android:padding="4dp">
 
-    <!-- The card wraps the content instead of filling the whole cell area, so a
-         tall widget leaves transparent space rather than a big white panel. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

@@ -111,10 +111,6 @@ private enum class TaskFilter(val label: String) {
     BACKGROUND("Background"),
 }
 
-/**
- * One row in the process list. A group stands for every process that shares a display
- * name, so the collapsed row can show combined totals instead of duplicate entries.
- */
 private data class ProcessEntry(
     val key: String,
     val label: String,

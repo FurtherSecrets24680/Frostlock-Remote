@@ -1,9 +1,5 @@
 package com.frostlock.remote.widget
 
-/**
- * What the home-screen widget shows. Kept free of Android types so the mapping
- * from connection state to label text can be unit tested.
- */
 data class WidgetState(
     val configured: Boolean = false,
     val checking: Boolean = false,
@@ -35,11 +31,6 @@ data class WidgetState(
         }
 }
 
-/**
- * Whether the launcher is showing the widget at a size that needs the compact
- * layout. Two cells and anything narrower use the smaller circle and one-line
- * status so the content never clips.
- */
 internal fun useCompactWidgetLayout(minWidthDp: Int, minHeightDp: Int): Boolean =
     minWidthDp in 1..149 || minHeightDp in 1..149
 

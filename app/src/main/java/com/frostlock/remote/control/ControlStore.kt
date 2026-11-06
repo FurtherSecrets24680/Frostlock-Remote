@@ -3,10 +3,6 @@ package com.frostlock.remote.control
 import android.content.Context
 import com.frostlock.remote.data.PcProfile
 
-/**
- * Remembers which PC the Quick Settings tile and notifications act on, and the last
- * known freeze state per PC so those surfaces can draw without waiting for the network.
- */
 internal class ControlStore(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences("frostlock_control", Context.MODE_PRIVATE)
@@ -39,10 +35,6 @@ internal class ControlStore(context: Context) {
     fun resolve(profiles: List<PcProfile>): PcProfile? = chooseProfile(defaultProfileId(), profiles)
 }
 
-/**
- * The remembered PC when it is still paired, otherwise the most recently used one.
- * Pure so the fallback behaviour can be unit tested.
- */
 internal fun chooseProfile(stored: String?, profiles: List<PcProfile>): PcProfile? {
     if (profiles.isEmpty()) return null
     stored?.let { id -> profiles.firstOrNull { it.id == id }?.let { return it } }

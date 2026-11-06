@@ -13,7 +13,6 @@ class UnlockGateTest {
             UnlockAuth.BIOMETRIC_OR_CREDENTIAL,
             chooseAuthenticatorsFor(sdk = 34, biometric = true, credential = true),
         )
-        // The same combination is what older versions use for a credential fallback.
         assertEquals(
             UnlockAuth.BIOMETRIC_OR_CREDENTIAL,
             chooseAuthenticatorsFor(sdk = 26, biometric = true, credential = true),
@@ -42,7 +41,6 @@ class UnlockGateTest {
 
     @Test
     fun credentialOnlyOnOldAndroidUsesTheTogetherMask() {
-        // DEVICE_CREDENTIAL alone is rejected by the library before API 30.
         assertEquals(
             UnlockAuth.BIOMETRIC_OR_CREDENTIAL,
             chooseAuthenticatorsFor(sdk = 29, biometric = false, credential = true),

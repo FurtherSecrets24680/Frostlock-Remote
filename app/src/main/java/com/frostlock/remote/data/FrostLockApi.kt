@@ -35,10 +35,6 @@ class FrostLockApi(private val signer: DeviceSigner) {
         val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trustManager), null) }
         return OkHttpClient.Builder()
             .sslSocketFactory(ssl.socketFactory, trustManager)
-            // The PC identity is authenticated by the exact certificate fingerprint
-            // transferred during pairing. Its self-signed IP SAN can become stale when
-            // DHCP changes the PC's address, so verify the pin here instead of matching
-            // the changing endpoint IP against the certificate SAN.
             .hostnameVerifier(HostnameVerifier { _, session ->
                 runCatching {
                     val certificate = session.peerCertificates.firstOrNull() as? X509Certificate
@@ -125,11 +121,6 @@ class FrostLockApi(private val signer: DeviceSigner) {
         )
     }
 
-    /**
-     * Sends a Windows command line to cmd.exe on the PC. Commands run in the signed-in
-     * desktop session through the same start-task endpoint, so no extra PC permission is
-     * needed beyond task control.
-     */
     suspend fun runCommand(profile: PcProfile, command: String): StartedTaskSummary {
         val trimmed = command.trim()
         require(trimmed.isNotEmpty()) { "Enter a command to run." }
@@ -140,10 +131,6 @@ class FrostLockApi(private val signer: DeviceSigner) {
         )
     }
 
-    /**
-     * Icons are fetched in small batches so one refresh never builds a huge response.
-     * The PC caches the PNGs, and the phone keeps decoded bitmaps for the session.
-     */
     suspend fun taskIcons(profile: PcProfile, keys: Collection<String>): Map<String, ByteArray> {
         val result = mutableMapOf<String, ByteArray>()
         keys.asSequence().filter(String::isNotBlank).distinct().chunked(24).forEach { batch ->

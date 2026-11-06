@@ -57,7 +57,7 @@ The widget redraws whenever the app checks a PC and when it is resized, and Andr
 
 Open the notification shade, expand the tiles, and add **FrostLock PC**. The tile acts on the PC you opened most recently in the app, or the newest paired PC if you have not opened one yet.
 
-Tapping the tile checks the PC's current state, then freezes it or unfreezes it — the same decision the app and widget make, so a tile tap never guesses. While the check runs the tile is shown as unavailable.
+Tapping the tile checks the PC's current state, then freezes it or unfreezes it. It makes the same decision as the app and widget, so a tile tap never guesses. While the check runs the tile is shown as unavailable.
 
 ## Freeze notification
 
@@ -67,7 +67,7 @@ While a freeze is active, FrostLock keeps one ongoing notification with the mode
 
 Starting a freeze never needs confirmation. Unfreezing does, because an unattended phone that is already unlocked should not be able to undo the PC's protection.
 
-Every unfreeze — from the app, the widget, the tile, or the notification — opens one shared confirmation screen. It asks for fingerprint or face with the device PIN, pattern, or password as a fallback. If the phone has a screen lock but no biometric, it asks for the device credential. If the phone has no screen lock at all, there is nothing to prove, so the unfreeze is sent directly.
+Every unfreeze opens the same confirmation screen, whether it starts in the app, the widget, the tile, or the notification. It asks for fingerprint or face with the device PIN, pattern, or password as a fallback. If the phone has a screen lock but no biometric, it asks for the device credential. If the phone has no screen lock at all, there is nothing to prove, so the unfreeze is sent directly.
 
 The app itself does not ask for authentication when you open it. A scan is requested only when you unfreeze. The confirmation also runs in its own task, so tapping a widget or tile does not pull the full app forward behind the prompt.
 

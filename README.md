@@ -120,3 +120,13 @@ This helper pushes a temporary snapshot branch to GitHub so Actions can build it
 ## Project details
 
 The Android client uses Kotlin, Jetpack Compose, DataStore, OkHttp, CameraX, ML Kit barcode scanning, and AndroidX Biometric. Pairing and request signing must remain compatible with the Windows implementation in the [FrostLock repository](https://github.com/FurtherSecrets24680/FrostLock).
+
+## License
+
+FrostLock Remote is free software under the [GNU General Public License v3.0](LICENSE), the same license as [FrostLock for Windows](https://github.com/FurtherSecrets24680/FrostLock). You may run it, study it, share it, and modify it. If you distribute a modified version, it has to stay under the GPL and include the source.
+
+The FrostLock name, icon, and branding are not part of that license. Forked builds must not present themselves as the official release.
+
+Third-party components keep their own licenses. AndroidX, Jetpack Compose and Material 3, OkHttp, DataStore, the Android CameraX libraries, AndroidX Biometric, and the Kotlin standard library are Apache-2.0. Google ML Kit barcode scanning is proprietary Google software supplied under Google's terms rather than the GPL, and is used as a separate component only to read pairing QR codes. Because of it the app as shipped is not entirely free software, and F-Droid cannot host it; a ZXing-based scanner would remove that limitation.
+
+The software comes with no warranty. FrostLock Remote can start and release a freeze on a paired PC, so read [Security and stored data](#security-and-stored-data) before you rely on it.
